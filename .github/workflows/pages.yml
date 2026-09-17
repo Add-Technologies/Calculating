@@ -38,8 +38,8 @@ jobs:
           node -e '
             const d = require("./_site/rates.json");
             const ok = x => x && !x.error;
-            const crypto = d.crypto.map(c => c.name + (c.error ? " ✗ " + c.error : " ✓ " + c.bid + "/" + c.ask)).join("; ");
-            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | ${crypto}`);
+            const list = arr => arr.map(c => c.name + (c.error ? " ✗ " + c.error : " ✓ " + (c.official ?? c.bid + "/" + c.ask))).join("; ");
+            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | USDT: ${list(d.crypto)} | USD: ${list(d.usdrub)}`);
           '
 
       - uses: actions/upload-pages-artifact@v5

@@ -337,6 +337,11 @@
       <div id="cryptoBody"></div>
     </details>
 
+    <details open id="secUsd">
+      <summary>USD / RUB <small>₽ за 1 USD</small></summary>
+      <div id="usdBody"></div>
+    </details>
+
     <details open id="secNbkr">
       <summary>Нацбанк КР <small id="nbkrDate"></small></summary>
       <div id="nbkrBody"></div>
@@ -992,6 +997,27 @@
     ], rows.length ? rows : [errRow(3, 'нет данных')]));
   }
 
+  function renderUsdRub() {
+    const body = $('usdBody');
+    body.innerHTML = '';
+    const list = ratesData.usdrub || [];
+    const rows = list.map(x => {
+      const details = [];
+      if (x.time) details.push(x.time);
+      if (x.updatedAt) details.push(new Date(x.updatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) + ' МСК');
+      if (x.last) details.push('последняя ' + x.last.toLocaleString('ru-RU', { maximumFractionDigits: 6 }));
+      const name = el('td', { className: 'name' }, [
+        el('a', { href: x.url, target: '_blank', rel: 'noopener', textContent: x.name }),
+        ...(details.length ? [el('small', { textContent: details.join(' · ') })] : []),
+      ]);
+      if (x.error) return el('tr', {}, [name, el('td', { className: 'err', colSpan: 2, textContent: 'нет данных', title: x.error })]);
+      // У ЦБ один официальный курс — на обе колонки
+      if (x.official) return el('tr', {}, [name, td(rateBtn(x.official, 'USD', 'RUB'), { colSpan: 2, style: 'text-align:center' })]);
+      return el('tr', {}, [name, td(rateBtn(x.bid, 'USD', 'RUB')), td(rateBtn(x.ask, 'USD', 'RUB'))]);
+    });
+    body.append(rtable(['Источник', 'Bid', 'Ask'], rows.length ? rows : [errRow(3, 'нет данных')]));
+  }
+
   function renderNbkr() {
     const body = $('nbkrBody'), nb = ratesData.nbkr || {};
     body.innerHTML = '';
@@ -1078,6 +1104,7 @@
   function renderRates() {
     renderRatesStatus();
     renderCrypto();
+    renderUsdRub();
     renderNbkr();
     renderMembers();
   }
