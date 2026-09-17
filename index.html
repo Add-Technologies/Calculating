@@ -46,7 +46,7 @@
     color: var(--text);
   }
   .wrap {
-    max-width: 1040px; margin: 0 auto;
+    max-width: 1500px; margin: 0 auto;
     padding: calc(24px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
              calc(48px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
   }
@@ -170,6 +170,61 @@
   tfoot td { font-weight: 600; border-bottom: none; }
   td .del { padding: 2px 8px; font-size: 12px; }
   .empty { color: var(--muted); text-align: center !important; padding: 20px; }
+
+  /* ---- Раскладка: калькулятор слева, курсы справа ---- */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 16px; align-items: start; }
+  .main { min-width: 0; }
+  .rates {
+    position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .rates { position: static; max-height: none; }
+  }
+  .rates-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .rates-head h2 { margin: 0; flex: 1; }
+  .rates-head button { padding: 5px 10px; font-size: 13px; }
+  .rates-status { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .rates-status.stale { color: var(--loss); }
+  .rates-tip { font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; }
+  .rates details { border-top: 1px solid var(--border); padding: 10px 0 4px; }
+  .rates summary { cursor: pointer; font-weight: 600; font-size: 14px; list-style: none; display: flex; align-items: baseline; gap: 6px; }
+  .rates summary::-webkit-details-marker { display: none; }
+  .rates summary::before { content: "▸"; color: var(--muted); transition: transform .15s; display: inline-block; }
+  .rates details[open] summary::before { transform: rotate(90deg); }
+  .rates summary small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: auto; }
+  .rt { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .rt th, .rt td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  .rt th { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .rt th:first-child, .rt td:first-child { text-align: left; white-space: normal; }
+  .rt tr:last-child td { border-bottom: none; }
+  .rt td.name a { color: var(--text); text-decoration: none; }
+  .rt td.name a:hover { text-decoration: underline; }
+  .rt td.name small { display: block; color: var(--muted); font-size: 11px; }
+  .rt tr.stale td { opacity: .55; }
+  .rt .err { color: var(--muted); font-size: 12px; text-align: left; }
+  .rv {
+    border: 0; background: none; padding: 2px 4px; border-radius: 4px; font: inherit; color: inherit;
+    font-variant-numeric: tabular-nums; cursor: pointer;
+  }
+  .rv:hover { background: var(--accent-soft); color: var(--accent); filter: none; }
+  .rv.best { color: var(--profit); font-weight: 600; }
+  .rt th.sortable { cursor: pointer; user-select: none; }
+  .rt th.sortable:hover { color: var(--text); }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .seg button { padding: 3px 9px; font-size: 12px; border-radius: 999px; }
+  .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rates-msg { font-size: 13px; color: var(--muted); padding: 8px 0; }
+
+  input.flash { animation: flash .9s ease-out; }
+  @keyframes flash { from { background: var(--accent-soft); outline: 2px solid var(--accent); } }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 8px; font-size: 14px;
+    max-width: calc(100vw - 32px); z-index: 200; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+  }
+  .toast[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -184,6 +239,8 @@
     <button class="x" id="installClose" title="Скрыть">✕</button>
   </div>
 
+  <div class="layout">
+  <main class="main">
   <div class="card">
     <div class="top">
       <div>
@@ -265,7 +322,44 @@
       </table>
     </div>
   </div>
+  </main>
+
+  <aside class="rates" id="rates">
+    <div class="rates-head">
+      <h2>Курсы</h2>
+      <button id="ratesRefresh" title="Обновить">↻ Обновить</button>
+    </div>
+    <div class="rates-status" id="ratesStatus">Загрузка…</div>
+    <div class="rates-tip">Нажмите на поле курса в калькуляторе, затем на курс здесь — он подставится.</div>
+
+    <details open id="secCrypto">
+      <summary>USDT / RUB — биржи <small>₽ за 1 USDT</small></summary>
+      <div id="cryptoBody"></div>
+    </details>
+
+    <details open id="secNbkr">
+      <summary>Нацбанк КР <small id="nbkrDate"></small></summary>
+      <div id="nbkrBody"></div>
+    </details>
+
+    <details open id="secCity">
+      <summary>Бишкек: средний и лучший <small>сом за 1</small></summary>
+      <div id="cityBody"></div>
+    </details>
+
+    <details open id="secMembers">
+      <summary>Банки и обменки <small>сом за 1</small></summary>
+      <div class="seg" id="memCur"></div>
+      <div class="seg" id="memType"></div>
+      <div id="membersBody"></div>
+    </details>
+
+    <div class="rates-msg">Источники: <a href="https://valuta.kg/" target="_blank" rel="noopener">valuta.kg</a> и сайты бирж.</div>
+  </aside>
+  </div>
 </div>
+
+<div class="toast" id="toast" hidden></div>
 
 <div class="picker" id="picker" hidden>
   <input id="pickerSearch" placeholder="Поиск или новый тикер…" autocomplete="off">
@@ -793,6 +887,262 @@
 
   buildLegs();
   renderDeals();
+
+  // ---- Курсы (панель справа) ----
+  const RATES_UI_KEY = 'treasury-rates-ui';
+  const RATES_REFRESH_MS = 60 * 1000;
+  const RATES_STALE_MIN = 30;
+  let ratesData = null, ratesSource = null;
+  const ratesUi = { cur: 'USD', type: 'all', sort: 'buy' };
+  try { Object.assign(ratesUi, JSON.parse(localStorage.getItem(RATES_UI_KEY)) || {}); } catch {}
+  const saveRatesUi = () => { try { localStorage.setItem(RATES_UI_KEY, JSON.stringify(ratesUi)); } catch {} };
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
+  }
+
+  // Поле курса, в которое подставляется значение из панели: последнее, где стоял курсор
+  let rateTarget = null; // { leg, key: 'rs' | 'rc' }
+  const rememberRateTarget = e => {
+    const input = e.target.closest?.('.rs, .rc');
+    if (!input) return;
+    rateTarget = {
+      leg: [...legsEl.children].indexOf(input.closest('.leg')),
+      key: input.classList.contains('rs') ? 'rs' : 'rc',
+    };
+  };
+  legsEl.addEventListener('focusin', rememberRateTarget);
+  legsEl.addEventListener('pointerdown', rememberRateTarget);
+
+  // value — сколько quote за 1 base
+  function insertRate(value, base, quote) {
+    if (!rateTarget || rateTarget.leg < 0 || rateTarget.leg >= S.legs.length) {
+      toast('Сначала нажмите на поле «Курс поставщика» или «Курс клиента» в калькуляторе');
+      return;
+    }
+    const i = rateTarget.leg, leg = S.legs[i];
+    const from = S.currencies[i], to = S.currencies[i + 1];
+    const [lb, lq] = leg.inverse ? [to, from] : [from, to];
+    let text = value.toLocaleString('ru-RU', { useGrouping: false, maximumFractionDigits: 12 });
+    const who = rateTarget.key === 'rs' ? 'поставщика' : 'клиента';
+    let msg = `Этап ${i + 1}, курс ${who}: ${text} ${lq} за 1 ${lb}`;
+    if (base === lq && quote === lb) {
+      text = invertRate(value);
+      msg = `Этап ${i + 1}, курс ${who}: ${text} ${lq} за 1 ${lb} (пересчитан из ${quote} за 1 ${base})`;
+    } else if (!(base === lb && quote === lq)) {
+      msg = `⚠ Подставлен курс ${quote} за 1 ${base}, а в этапе ${i + 1} нужен ${lq} за 1 ${lb}. Проверьте валюты.`;
+    }
+    const input = legsEl.children[i].querySelector('.' + rateTarget.key);
+    input.value = leg[rateTarget.key] = text;
+    input.classList.remove('flash');
+    void input.offsetWidth;
+    input.classList.add('flash');
+    update();
+    toast(msg);
+  }
+
+  const el = (tag, props = {}, children = []) => {
+    const node = Object.assign(document.createElement(tag), props);
+    children.forEach(c => node.append(c));
+    return node;
+  };
+
+  // Кнопка с курсом: нажатие подставляет его в калькулятор
+  function rateBtn(value, base, quote, { best = false, per = 1 } = {}) {
+    if (value == null) return '—';
+    const b = el('button', {
+      className: 'rv' + (best ? ' best' : ''),
+      textContent: value.toLocaleString('ru-RU', { maximumFractionDigits: 6 }),
+      title: `Подставить: ${quote} за 1 ${base}`,
+    });
+    b.onclick = () => insertRate(value / per, base, quote);
+    return b;
+  }
+
+  function rtable(headers, rows) {
+    const thead = el('thead', {}, [el('tr', {}, headers.map(h => typeof h === 'string' ? el('th', { textContent: h }) : h))]);
+    const tbody = el('tbody', {}, rows);
+    return el('table', { className: 'rt' }, [thead, tbody]);
+  }
+  const td = (content, props = {}) => el('td', props, [content]);
+  const errRow = (cols, text) => el('tr', {}, [el('td', { className: 'err', colSpan: cols, textContent: text })]);
+
+  function renderCrypto() {
+    const body = $('cryptoBody');
+    body.innerHTML = '';
+    const list = ratesData.crypto || [];
+    const bids = list.map(x => x.bid).filter(Boolean), asks = list.map(x => x.ask).filter(Boolean);
+    const maxBid = Math.max(...bids), minAsk = Math.min(...asks);
+    const rows = list.map(x => {
+      const name = el('td', { className: 'name' }, [
+        el('a', { href: x.url, target: '_blank', rel: 'noopener', textContent: x.name }),
+        ...(x.note ? [el('small', { textContent: x.note })] : []),
+      ]);
+      if (x.error) return el('tr', {}, [name, el('td', { className: 'err', colSpan: 2, textContent: 'нет данных', title: x.error })]);
+      return el('tr', {}, [
+        name,
+        td(rateBtn(x.bid, 'USDT', 'RUB', { best: bids.length > 1 && x.bid === maxBid })),
+        td(rateBtn(x.ask, 'USDT', 'RUB', { best: asks.length > 1 && x.ask === minAsk })),
+      ]);
+    });
+    body.append(rtable([
+      'Биржа',
+      el('th', { textContent: 'Bid', title: 'Биржа покупает USDT — по этой цене можно продать' }),
+      el('th', { textContent: 'Ask', title: 'Биржа продаёт USDT — по этой цене можно купить' }),
+    ], rows.length ? rows : [errRow(3, 'нет данных')]));
+  }
+
+  function renderNbkr() {
+    const body = $('nbkrBody'), nb = ratesData.nbkr || {};
+    body.innerHTML = '';
+    $('nbkrDate').textContent = nb.date ? `на ${nb.date}` : '';
+    if (nb.error || !nb.rates) { body.append(rtable(['Валюта', 'Курс'], [errRow(2, 'нет данных')])); return; }
+    body.append(rtable(['Валюта', 'Сом'], nb.rates.map(r => el('tr', {}, [
+      td(r.nominal > 1 ? `${r.code} (за ${r.nominal})` : r.code),
+      td(rateBtn(r.rate, r.code, 'KGS', { per: r.nominal })),
+    ]))));
+  }
+
+  function renderCity() {
+    const body = $('cityBody'), city = ratesData.bishkek || {};
+    body.innerHTML = '';
+    if (city.error || !city.average) { body.append(rtable(['Валюта'], [errRow(5, 'нет данных')])); return; }
+    const codes = Object.keys(city.average);
+    body.append(rtable(
+      ['Валюта', 'Ср. пок.', 'Ср. прод.', 'Лучш. пок.', 'Лучш. прод.'],
+      codes.map(code => {
+        const a = city.average[code] || {}, b = city.best?.[code] || {};
+        return el('tr', {}, [
+          td(code),
+          td(rateBtn(a.buy, code, 'KGS')), td(rateBtn(a.sell, code, 'KGS')),
+          td(rateBtn(b.buy, code, 'KGS')), td(rateBtn(b.sell, code, 'KGS')),
+        ]);
+      }),
+    ));
+  }
+
+  function renderMembers() {
+    const body = $('membersBody'), members = ratesData.members;
+    body.innerHTML = '';
+    $('memCur').innerHTML = '';
+    $('memType').innerHTML = '';
+    if (!Array.isArray(members)) { body.append(rtable(['Название'], [errRow(3, 'нет данных')])); return; }
+
+    const curs = [...new Set(members.flatMap(m => Object.keys(m.rates)))];
+    if (!curs.includes(ratesUi.cur)) ratesUi.cur = curs[0];
+    const TYPES = [['all', 'Все'], ['Банк', 'Банки'], ['Обменка', 'Обменки'], ['МФК', 'МФК']]
+      .filter(([t]) => t === 'all' || members.some(m => m.type === t));
+    if (!TYPES.some(([t]) => t === ratesUi.type)) ratesUi.type = 'all';
+
+    const seg = (container, items, current, onPick) => items.forEach(([value, label]) => {
+      const b = el('button', { textContent: label, className: value === current ? 'on' : '' });
+      b.onclick = () => { onPick(value); saveRatesUi(); renderMembers(); };
+      container.append(b);
+    });
+    seg($('memCur'), curs.map(c => [c, c]), ratesUi.cur, v => { ratesUi.cur = v; });
+    seg($('memType'), TYPES, ratesUi.type, v => { ratesUi.type = v; });
+
+    const cur = ratesUi.cur;
+    const list = members
+      .filter(m => ratesUi.type === 'all' || m.type === ratesUi.type)
+      .filter(m => m.rates[cur] && (m.rates[cur].buy || m.rates[cur].sell));
+    const sorters = {
+      buy: (a, b) => (b.rates[cur].buy ?? -Infinity) - (a.rates[cur].buy ?? -Infinity),
+      sell: (a, b) => (a.rates[cur].sell ?? Infinity) - (b.rates[cur].sell ?? Infinity),
+      name: (a, b) => a.name.localeCompare(b.name, 'ru'),
+    };
+    list.sort(sorters[ratesUi.sort] || sorters.buy);
+
+    const buys = list.map(m => m.rates[cur].buy).filter(Boolean);
+    const sells = list.map(m => m.rates[cur].sell).filter(Boolean);
+    const maxBuy = Math.max(...buys), minSell = Math.min(...sells);
+
+    const th = (label, key, title) => {
+      const h = el('th', { className: 'sortable', textContent: label + (ratesUi.sort === key ? (key === 'buy' ? ' ↓' : ' ↑') : ''), title });
+      h.onclick = () => { ratesUi.sort = key; saveRatesUi(); renderMembers(); };
+      return h;
+    };
+    const rows = list.map(m => {
+      const r = m.rates[cur];
+      const nameCell = el('td', { className: 'name' }, [
+        m.url ? el('a', { href: m.url, target: '_blank', rel: 'noopener', textContent: m.name }) : m.name,
+        el('small', { textContent: [m.type, m.note, m.updated && `уст. ${m.updated}`].filter(Boolean).join(' · ') }),
+      ]);
+      return el('tr', { className: m.fresh ? '' : 'stale', title: m.fresh ? '' : 'Курс давно не обновлялся' }, [
+        nameCell,
+        td(rateBtn(r.buy, cur, 'KGS', { best: r.buy === maxBuy })),
+        td(rateBtn(r.sell, cur, 'KGS', { best: r.sell === minSell })),
+      ]);
+    });
+    body.append(rtable([
+      th('Название', 'name'),
+      th('Покупка', 'buy', 'Банк покупает валюту. Лучший — самый высокий'),
+      th('Продажа', 'sell', 'Банк продаёт валюту. Лучший — самый низкий'),
+    ], rows.length ? rows : [errRow(3, 'нет данных')]));
+  }
+
+  function renderRatesStatus() {
+    const status = $('ratesStatus');
+    if (!ratesData) return;
+    const at = new Date(ratesData.updatedAt);
+    const min = Math.round((Date.now() - at) / 60000);
+    const ago = min < 1 ? 'только что' : min < 60 ? `${min} мин назад` : at.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+    const src = ratesSource === 'live' ? 'онлайн' : 'автообновление на сайте';
+    status.textContent = `Обновлено ${ago} (${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}) · ${src}`;
+    status.classList.toggle('stale', min > RATES_STALE_MIN);
+    if (min > RATES_STALE_MIN) status.textContent += ' · данные устарели';
+  }
+
+  function renderRates() {
+    renderRatesStatus();
+    renderCrypto();
+    renderNbkr();
+    renderCity();
+    renderMembers();
+  }
+
+  let ratesLoading = false;
+  async function loadRates(manual = false) {
+    if (ratesLoading) return;
+    ratesLoading = true;
+    $('ratesRefresh').disabled = true;
+    // Сначала живые курсы с локального сервера, иначе — файл, который обновляет GitHub
+    for (const [url, src] of [['api/rates', 'live'], ['rates.json', 'file']]) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (!data.updatedAt) continue;
+        ratesData = data;
+        ratesSource = src;
+        renderRates();
+        if (manual) toast('Курсы обновлены');
+        break;
+      } catch {}
+    }
+    if (!ratesData) {
+      $('ratesStatus').textContent = location.protocol === 'file:'
+        ? 'Курсы доступны при запуске через сервер (node server.js) или на сайте.'
+        : 'Не удалось загрузить курсы. Проверьте интернет.';
+    } else if (manual && ratesSource) {
+      renderRatesStatus();
+    }
+    ratesLoading = false;
+    $('ratesRefresh').disabled = false;
+  }
+
+  $('ratesRefresh').onclick = () => loadRates(true);
+  loadRates();
+  setInterval(() => { if (document.visibilityState === 'visible') loadRates(); }, RATES_REFRESH_MS);
+  setInterval(renderRatesStatus, 30 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadRates();
+  });
 
   // ---- Установка на телефон (PWA) ----
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

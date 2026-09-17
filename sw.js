@@ -1,6 +1,6 @@
 // Service worker: приложение открывается без интернета.
 // Сначала сеть (чтобы сразу получать обновления), при отсутствии связи — кэш.
-const CACHE = 'treasury-v1';
+const CACHE = 'treasury-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -34,6 +34,7 @@ self.addEventListener('fetch', event => {
         }
         return res;
       })
-      .catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+      // Без сети: сохранённая копия; для страниц — приложение, для данных (курсы) — ничего
+      .catch(() => caches.match(req).then(hit => hit || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
   );
 });

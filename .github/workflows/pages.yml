@@ -1,0 +1,57 @@
+# Публикация на GitHub Pages вместе со свежими курсами (rates.json).
+# Запускается при каждом push, каждые 10 минут и вручную (Actions → Run workflow).
+# В Settings → Pages источник должен быть «GitHub Actions».
+name: Сайт и курсы
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Собрать сайт и курсы
+        run: |
+          mkdir -p _site
+          cp index.html manifest.webmanifest sw.js _site/
+          cp -r icons _site/
+          node lib/rates.js _site/rates.json
+          node -e '
+            const d = require("./_site/rates.json");
+            const ok = x => x && !x.error;
+            const crypto = d.crypto.map(c => c.name + (c.error ? " ✗ " + c.error : " ✓ " + c.bid + "/" + c.ask)).join("; ");
+            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | Бишкек ${ok(d.bishkek) ? "✓" : "✗ " + d.bishkek.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | ${crypto}`);
+          '
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

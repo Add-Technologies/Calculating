@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { fetchAllRates } = require('./lib/rates');
 
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -19,8 +20,30 @@ const TYPES = {
   '.svg': 'image/svg+xml',
 };
 
+// Курсы: не чаще раза в минуту, параллельные запросы ждут один и тот же сбор
+const RATES_TTL_MS = 60 * 1000;
+let ratesCache = null, ratesAt = 0, ratesPending = null;
+function getRates() {
+  if (ratesCache && Date.now() - ratesAt < RATES_TTL_MS) return Promise.resolve(ratesCache);
+  ratesPending ??= fetchAllRates()
+    .then(data => { ratesCache = data; ratesAt = Date.now(); return data; })
+    .finally(() => { ratesPending = null; });
+  return ratesPending;
+}
+
 http.createServer((req, res) => {
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
+  if (urlPath === '/api/rates') {
+    return getRates()
+      .then(data => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(data));
+      })
+      .catch(e => {
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: e.message }));
+      });
+  }
   const file = path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath);
   if (!file.startsWith(ROOT + path.sep) || path.basename(file) === 'server.js') {
     res.writeHead(403);

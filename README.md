@@ -10,6 +10,25 @@
 Пример: объём 10 000 000 RUB, курс поставщика 1,0314, курс клиента 1,025 →
 поставщик 10 314 000 KGS, клиент 10 250 000 KGS, прибыль **64 000 KGS**.
 
+## Курсы
+
+Панель справа от калькулятора:
+
+- **USDT/RUB** на биржах (bid / ask);
+- **Нацбанк КР** и **средний / лучший курс Бишкека** — с [valuta.kg](https://valuta.kg/);
+- **банки, обменки, МФК** — покупка и продажа USD, EUR, RUB, KZT, сортировка и фильтры.
+
+Нажмите на поле курса в калькуляторе, затем на курс в панели — он подставится
+(для обратной котировки пересчитается автоматически).
+
+Откуда берутся данные:
+
+- при запуске `node server.js` — онлайн через `/api/rates` (кэш 1 минута);
+- на GitHub Pages — из `rates.json`, который GitHub Actions обновляет каждые ~10 минут
+  (`.github/workflows/pages.yml`). В **Settings → Pages** источник должен быть **GitHub Actions**.
+
+Сбор курсов — `lib/rates.js` (`node lib/rates.js` печатает JSON).
+
 ## Запуск на компьютере
 
 Открыть `index.html` двойным кликом — или запустить локальный сервер (нужен Node.js):
@@ -26,7 +45,8 @@ $env:HOST="0.0.0.0"; node server.js
 
 ## Установка на телефон
 
-Нужен адрес `https://` — например, GitHub Pages: **Settings → Pages → Deploy from a branch → `main` / root**.
+Нужен адрес `https://` — GitHub Pages: **Settings → Pages → Source: GitHub Actions**.
+Сайт: https://chiksan-01.github.io/Calculating/
 
 - **Android (Chrome):** открыть ссылку → «Установить» (или меню ⋮ → «Установить приложение»).
 - **iPhone (Safari):** открыть ссылку → «Поделиться» → «На экран «Домой»».
@@ -45,4 +65,6 @@ $env:HOST="0.0.0.0"; node server.js
 | `manifest.webmanifest` | описание приложения для установки |
 | `sw.js` | работа без интернета |
 | `icons/` | иконки |
-| `server.js` | локальный сервер для разработки |
+| `server.js` | локальный сервер + `/api/rates` |
+| `lib/rates.js` | сбор курсов с valuta.kg и бирж |
+| `.github/workflows/pages.yml` | публикация на Pages и обновление курсов |
