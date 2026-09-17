@@ -370,8 +370,9 @@
 
 <script>
   const $ = id => document.getElementById(id);
-  const STATE_KEY = 'treasury-state';
   const DEALS_KEY = 'treasury-deals';
+  // Раньше форма сохранялась между открытиями — теперь старт всегда одинаковый
+  try { localStorage.removeItem('treasury-state'); } catch {}
 
   // usd — примерная стоимость единицы в долларах. Нужна только чтобы
   // по умолчанию выбрать привычное направление котировки (1 USD = 87 KGS, а не 1 KGS = 0,0115 USD).
@@ -564,21 +565,13 @@
   const csvNum = x => x.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 12 }).replace('.', ',');
 
   // ---- Состояние формы ----
-  const DEFAULT_STATE = {
-    volume: '10 000 000',
+  // При каждом открытии — одинаковый старт: RUB → KGS, 1 000 000.
+  // Курс поставщика подставляется из курсов Бакай Банка, когда они загрузятся; курс клиента пустой.
+  const S = {
+    volume: '1 000 000',
     currencies: ['RUB', 'KGS'],
-    legs: [{ rs: '1,0314', rc: '1,025', inverse: false }],
+    legs: [{ rs: '', rc: '', inverse: false }],
   };
-  function loadState() {
-    try {
-      const s = JSON.parse(localStorage.getItem(STATE_KEY));
-      if (s && Array.isArray(s.currencies) && Array.isArray(s.legs)
-          && s.legs.length >= 1 && s.currencies.length === s.legs.length + 1) return s;
-    } catch {}
-    return structuredClone(DEFAULT_STATE);
-  }
-  const S = loadState();
-  const saveState = () => { try { localStorage.setItem(STATE_KEY, JSON.stringify(S)); } catch {} };
 
   // ---- Расчёт цепочки ----
   // Каждый этап: сумма_в_следующей_валюте = сумма × курс (или ÷ курс, если котировка обратная).
@@ -588,19 +581,22 @@
   function compute() {
     const volume = parseNum(S.volume);
     const steps = [];
-    let sup = volume, cli = volume, ok = isFinite(volume) && volume > 0 && !hasAdjacentDuplicates();
+    const base = isFinite(volume) && volume > 0 && !hasAdjacentDuplicates();
+    // Поставщик и клиент считаются независимо: один может быть уже посчитан, пока у другого нет курса
+    let sup = base ? volume : null, cli = base ? volume : null;
     S.legs.forEach((leg, i) => {
       const rs = parseNum(leg.rs), rc = parseNum(leg.rc);
-      if (!(rs > 0) || !(rc > 0)) ok = false;
-      if (!ok) { steps.push(null); return; }
       const d = decOf(S.currencies[i + 1]);
-      sup = roundTo(leg.inverse ? sup / rs : sup * rs, d);
-      cli = roundTo(leg.inverse ? cli / rc : cli * rc, d);
+      sup = sup != null && rs > 0 ? roundTo(leg.inverse ? sup / rs : sup * rs, d) : null;
+      cli = cli != null && rc > 0 ? roundTo(leg.inverse ? cli / rc : cli * rc, d) : null;
       steps.push({ sup, cli, rs, rc });
     });
-    if (!ok) return { ok, steps };
+    const ok = sup != null && cli != null;
     const end = S.currencies[S.currencies.length - 1];
-    return { ok, steps, volume, supplier: sup, client: cli, profit: roundTo(sup - cli, decOf(end)) };
+    return {
+      ok, steps, volume, supplier: sup, client: cli,
+      profit: ok ? roundTo(sup - cli, decOf(end)) : null,
+    };
   }
 
   // Кросс-курс в привычном направлении: "1 USD = 90,5 RUB"
@@ -786,8 +782,8 @@
         rule.textContent = `Для прибыли курс поставщика должен быть ${need} курса клиента.`;
       }
       const st = r.steps[i];
-      el.querySelector('.os').textContent = st ? fmtAmt(st.sup, to) : '—';
-      el.querySelector('.oc').textContent = st ? fmtAmt(st.cli, to) : '—';
+      el.querySelector('.os').textContent = st?.sup != null ? fmtAmt(st.sup, to) : '—';
+      el.querySelector('.oc').textContent = st?.cli != null ? fmtAmt(st.cli, to) : '—';
     });
 
     // Итоги
@@ -795,20 +791,27 @@
     if (cur.some(c => !c)) warns.push('Укажите валюту на каждом этапе.');
     if (hasAdjacentDuplicates()) warns.push('Соседние валюты в маршруте совпадают — выберите разные валюты, иначе расчёт невозможен.');
 
+    // Итог одной стороны: показывается, как только посчитан, даже если у другой стороны нет курса
+    const single = S.legs.length === 1;
+    const sideText = (amount, key) => {
+      if (amount == null) return ['—', ''];
+      const formula = single
+        ? `${fmtNum(r.volume, decOf(start))} ${S.legs[0].inverse ? '÷' : '×'} ${fmtRate(r.steps[0][key])}`
+        : crossText(amount, r.volume, start, end).text;
+      return [fmtAmt(amount, end), formula];
+    };
+    [$('sumSupplier').textContent, $('fSupplier').textContent] = sideText(r.supplier, 'rs');
+    [$('sumClient').textContent, $('fClient').textContent] = sideText(r.client, 'rc');
+
     if (!r.ok) {
-      ['sumSupplier', 'sumClient', 'profit', 'spread', 'margin', 'profitStart'].forEach(id => $(id).textContent = '—');
-      ['fSupplier', 'fClient', 'fProfit'].forEach(id => $(id).textContent = '');
+      ['profit', 'spread', 'margin', 'profitStart'].forEach(id => $(id).textContent = '—');
+      $('fProfit').textContent = '';
       $('profit').className = 'v';
     } else {
       const cs = crossText(r.supplier, r.volume, start, end);
       const cc = crossText(r.client, r.volume, start, end);
-      $('sumSupplier').textContent = fmtAmt(r.supplier, end);
-      $('sumClient').textContent = fmtAmt(r.client, end);
       $('profit').textContent = fmtAmt(r.profit, end);
       $('profit').className = 'v ' + (r.profit >= 0 ? 'pos' : 'neg');
-      const single = S.legs.length === 1;
-      $('fSupplier').textContent = single ? `${fmtNum(r.volume, decOf(start))} ${S.legs[0].inverse ? '÷' : '×'} ${fmtRate(r.steps[0].rs)}` : cs.text;
-      $('fClient').textContent = single ? `${fmtNum(r.volume, decOf(start))} ${S.legs[0].inverse ? '÷' : '×'} ${fmtRate(r.steps[0].rc)}` : cc.text;
       $('fProfit').textContent = `${fmtNum(r.supplier, decOf(end))} − ${fmtNum(r.client, decOf(end))}`;
       $('spread').textContent = fmtRate(Math.abs(cs.value - cc.value));
       $('margin').textContent = fmtNum(r.supplier ? r.profit / r.supplier * 100 : 0, 3) + ' %';
@@ -818,7 +821,6 @@
     }
     $('warn').innerHTML = '';
     warns.forEach(w => { const d = document.createElement('div'); d.textContent = w; $('warn').appendChild(d); });
-    saveState();
   }
 
   // ---- Журнал ----
@@ -1162,6 +1164,26 @@
     renderMembers();
   }
 
+  // Курс поставщика по умолчанию: Бакай Банк покупает RUB (отдаёт сомы за рубли).
+  // Один раз после открытия и только если пользователь ещё не менял этап RUB → KGS.
+  let defaultRateApplied = false;
+  function applyDefaultSupplierRate() {
+    if (defaultRateApplied) return;
+    const members = Array.isArray(ratesData?.members) ? ratesData.members : [];
+    const bakai = members.find(m => /bakaibank/i.test(m.url || '') || /бакай\s*банк/i.test(m.name));
+    const rate = bakai?.rates?.RUB?.buy;
+    if (!rate) return;
+    defaultRateApplied = true;
+    const leg = S.legs[0];
+    const untouched = S.legs.length === 1 && S.currencies[0] === 'RUB' && S.currencies[1] === 'KGS'
+      && !leg.inverse && !leg.rs;
+    if (!untouched) return;
+    leg.rs = groupDigits(rate.toLocaleString('ru-RU', { useGrouping: false, maximumFractionDigits: 12 }));
+    const input = legsEl.children[0]?.querySelector('.rs');
+    if (input) input.value = leg.rs;
+    update();
+  }
+
   let ratesLoading = false;
   async function loadRates(manual = false) {
     if (ratesLoading) return;
@@ -1176,6 +1198,7 @@
         if (!data.updatedAt) continue;
         ratesData = data;
         ratesSource = src;
+        applyDefaultSupplierRate();
         renderRates();
         if (manual) toast('Курсы обновлены');
         break;
