@@ -565,12 +565,12 @@
   const csvNum = x => x.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 12 }).replace('.', ',');
 
   // ---- Состояние формы ----
-  // При каждом открытии — одинаковый старт: RUB → KGS, 1 000 000.
+  // При каждом открытии — одинаковый старт: KGS → RUB, 1 000 000, котировка «1 RUB = x KGS».
   // Курс поставщика подставляется из курсов Бакай Банка, когда они загрузятся; курс клиента пустой.
   const S = {
     volume: '1 000 000',
-    currencies: ['RUB', 'KGS'],
-    legs: [{ rs: '', rc: '', inverse: false }],
+    currencies: ['KGS', 'RUB'],
+    legs: [{ rs: '', rc: '', inverse: true }],
   };
 
   // ---- Расчёт цепочки ----
@@ -1164,19 +1164,19 @@
     renderMembers();
   }
 
-  // Курс поставщика по умолчанию: Бакай Банк покупает RUB (отдаёт сомы за рубли).
-  // Один раз после открытия и только если пользователь ещё не менял этап RUB → KGS.
+  // Курс поставщика по умолчанию для KGS → RUB: Бакай Банк продаёт RUB (отдаёт рубли за сомы).
+  // Один раз после открытия и только если пользователь ещё не менял этап KGS → RUB.
   let defaultRateApplied = false;
   function applyDefaultSupplierRate() {
     if (defaultRateApplied) return;
     const members = Array.isArray(ratesData?.members) ? ratesData.members : [];
     const bakai = members.find(m => /bakaibank/i.test(m.url || '') || /бакай\s*банк/i.test(m.name));
-    const rate = bakai?.rates?.RUB?.buy;
+    const rate = bakai?.rates?.RUB?.sell;
     if (!rate) return;
     defaultRateApplied = true;
     const leg = S.legs[0];
-    const untouched = S.legs.length === 1 && S.currencies[0] === 'RUB' && S.currencies[1] === 'KGS'
-      && !leg.inverse && !leg.rs;
+    const untouched = S.legs.length === 1 && S.currencies[0] === 'KGS' && S.currencies[1] === 'RUB'
+      && leg.inverse && !leg.rs;
     if (!untouched) return;
     leg.rs = groupDigits(rate.toLocaleString('ru-RU', { useGrouping: false, maximumFractionDigits: 12 }));
     const input = legsEl.children[0]?.querySelector('.rs');
