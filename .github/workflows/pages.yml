@@ -39,7 +39,7 @@ jobs:
             const d = require("./_site/rates.json");
             const ok = x => x && !x.error;
             const crypto = d.crypto.map(c => c.name + (c.error ? " ✗ " + c.error : " ✓ " + c.bid + "/" + c.ask)).join("; ");
-            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | Бишкек ${ok(d.bishkek) ? "✓" : "✗ " + d.bishkek.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | ${crypto}`);
+            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | ${crypto}`);
           '
 
       - uses: actions/upload-pages-artifact@v3

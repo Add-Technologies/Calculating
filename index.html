@@ -342,11 +342,6 @@
       <div id="nbkrBody"></div>
     </details>
 
-    <details open id="secCity">
-      <summary>Бишкек: средний курс <small>сом за 1, за 2 часа</small></summary>
-      <div id="cityBody"></div>
-    </details>
-
     <details open id="secMembers">
       <summary>Банки и обменки <small>сом за 1</small></summary>
       <div class="seg" id="memCur"></div>
@@ -1008,20 +1003,6 @@
     ]))));
   }
 
-  function renderCity() {
-    const body = $('cityBody'), city = ratesData.bishkek || {};
-    body.innerHTML = '';
-    if (city.error || !city.average) { body.append(rtable(['Валюта'], [errRow(3, 'нет данных')])); return; }
-    const codes = Object.keys(city.average);
-    body.append(rtable(
-      ['Валюта', 'Покупка', 'Продажа'],
-      codes.map(code => {
-        const a = city.average[code] || {};
-        return el('tr', {}, [td(code), td(rateBtn(a.buy, code, 'KGS')), td(rateBtn(a.sell, code, 'KGS'))]);
-      }),
-    ));
-  }
-
   function renderMembers() {
     const body = $('membersBody'), members = ratesData.members;
     body.innerHTML = '';
@@ -1098,7 +1079,6 @@
     renderRatesStatus();
     renderCrypto();
     renderNbkr();
-    renderCity();
     renderMembers();
   }
 
