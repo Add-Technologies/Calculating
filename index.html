@@ -625,8 +625,8 @@
         </div>
         <div class="rule"></div>`;
       const q = sel => el.querySelector(sel);
-      q('.rs').value = leg.rs;
-      q('.rc').value = leg.rc;
+      q('.rs').value = leg.rs = groupDigits(leg.rs);
+      q('.rc').value = leg.rc = groupDigits(leg.rc);
       q('.del').style.display = S.legs.length > 1 ? '' : 'none';
 
       q('.cur').addEventListener('click', e => openPicker(e.currentTarget, S.currencies[i + 1], code => {
@@ -639,7 +639,7 @@
         leg.inverse = !leg.inverse;
         for (const key of ['rs', 'rc']) {
           const v = parseNum(leg[key]);
-          if (v > 0) q('.' + key).value = leg[key] = invertRate(v);
+          if (v > 0) q('.' + key).value = leg[key] = groupDigits(invertRate(v));
         }
         update();
       });
@@ -677,12 +677,52 @@
     legsEl.lastElementChild.querySelector('.cur').click();
   });
 
-  $('volume').value = S.volume;
+  // ---- Разделение разрядов пробелами прямо при вводе: 100000 → 100 000 ----
+  const NUM_FIELDS = '#volume, .rs, .rc';
+
+  // "001000000,5" → "1 000 000,5": лишние символы и ведущие нули убираются, остаётся один десятичный знак
+  function groupDigits(value) {
+    const raw = String(value ?? '').replace(/[^\d.,]/g, '');
+    const sep = raw.search(/[.,]/);
+    const int = (sep < 0 ? raw : raw.slice(0, sep)).replace(/^0+(?=\d)/, '');
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return sep < 0 ? grouped : grouped + raw[sep] + raw.slice(sep + 1).replace(/[.,]/g, '');
+  }
+
+  // Переформатировать поле, сохранив позицию курсора относительно цифр
+  function groupInput(input) {
+    const { value, selectionStart } = input;
+    const out = groupDigits(value);
+    if (out === value) return;
+    const isSig = ch => /[\d.,]/.test(ch);
+    let before = 0;
+    for (let i = 0; i < selectionStart; i++) if (isSig(value[i])) before++;
+    // Убранные ведущие нули, стоявшие перед курсором, не считаются
+    const digits = value.replace(/[^\d.,]/g, '');
+    const zeros = digits.length - digits.replace(/^0+(?=\d)/, '').length;
+    before = Math.max(0, before - Math.min(zeros, before));
+    let pos = 0;
+    for (let seen = 0; pos < out.length && seen < before; pos++) if (isSig(out[pos])) seen++;
+    input.value = out;
+    input.setSelectionRange(pos, pos);
+  }
+
+  // Фаза перехвата: поле отформатировано до того, как значение прочитают обработчики расчёта
+  document.addEventListener('input', e => {
+    if (e.target.matches?.(NUM_FIELDS)) groupInput(e.target);
+  }, true);
+
+  // Backspace/Delete рядом с пробелом удаляют цифру, а не разделитель
+  document.addEventListener('keydown', e => {
+    const input = e.target;
+    if (!input.matches?.(NUM_FIELDS) || input.selectionStart !== input.selectionEnd) return;
+    const pos = input.selectionStart;
+    if (e.key === 'Backspace' && input.value[pos - 1] === ' ') input.setSelectionRange(pos - 1, pos - 1);
+    if (e.key === 'Delete' && input.value[pos] === ' ') input.setSelectionRange(pos + 1, pos + 1);
+  }, true);
+
+  $('volume').value = S.volume = groupDigits(S.volume);
   $('volume').addEventListener('input', e => { S.volume = e.target.value; update(); });
-  $('volume').addEventListener('blur', () => {
-    const v = parseNum(S.volume);
-    if (isFinite(v)) { S.volume = $('volume').value = fmtNum(v, decOf(S.currencies[0])); saveState(); }
-  });
   $('startCur').addEventListener('click', e => openPicker(e.currentTarget, S.currencies[0], code => {
     S.currencies[0] = code;
     autoOrient(0);
@@ -938,7 +978,7 @@
       msg = `⚠ Подставлен курс ${quote} за 1 ${base}, а в этапе ${i + 1} нужен ${lq} за 1 ${lb}. Проверьте валюты.`;
     }
     const input = legsEl.children[i].querySelector('.' + rateTarget.key);
-    input.value = leg[rateTarget.key] = text;
+    input.value = leg[rateTarget.key] = groupDigits(text);
     input.classList.remove('flash');
     void input.offsetWidth;
     input.classList.add('flash');
