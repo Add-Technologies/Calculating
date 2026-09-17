@@ -139,6 +139,7 @@
   .leg-head .flip { font-size: 13px; padding: 6px 10px; }
   .leg-head .del { margin-left: auto; padding: 6px 10px; }
   .leg-grid { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 16px; }
+  .rule { font-size: 13px; color: var(--muted); margin-top: 10px; }
   .leg-out { font-size: 14px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; gap: 6px; font-variant-numeric: tabular-nums; }
   .leg-out b { color: var(--text); font-weight: 600; }
 
@@ -452,6 +453,9 @@
     const mag = Math.floor(Math.log10(Math.abs(x)));
     return x.toLocaleString('ru-RU', { maximumFractionDigits: Math.min(12, Math.max(4, 5 - mag)) });
   }
+  // 1 ÷ курс с 10 значащими цифрами: при обратном перевороте получается исходное число
+  const invertRate = x => Number((1 / x).toPrecision(10))
+    .toLocaleString('ru-RU', { useGrouping: false, maximumFractionDigits: 15 });
   // Для CSV: без разделителей тысяч и без экспоненты, запятая как десятичный знак
   const csvNum = x => x.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 12 }).replace('.', ',');
 
@@ -524,7 +528,8 @@
             <div>Поставщик: <b class="os">—</b></div>
             <div>Клиент: <b class="oc">—</b></div>
           </div>
-        </div>`;
+        </div>
+        <div class="rule"></div>`;
       const q = sel => el.querySelector(sel);
       q('.rs').value = leg.rs;
       q('.rc').value = leg.rc;
@@ -535,7 +540,15 @@
         autoOrient(i);
         update();
       }));
-      q('.flip').addEventListener('click', () => { leg.inverse = !leg.inverse; update(); });
+      // Переворот котировки: курсы пересчитываются в 1 ÷ курс, итог сделки не меняется
+      q('.flip').addEventListener('click', () => {
+        leg.inverse = !leg.inverse;
+        for (const key of ['rs', 'rc']) {
+          const v = parseNum(leg[key]);
+          if (v > 0) q('.' + key).value = leg[key] = invertRate(v);
+        }
+        update();
+      });
       q('.rs').addEventListener('input', e => { leg.rs = e.target.value; update(); });
       q('.rc').addEventListener('input', e => { leg.rc = e.target.value; update(); });
       q('.del').addEventListener('click', () => removeLeg(i));
@@ -609,6 +622,23 @@
       el.querySelector('.cur').textContent = cur[i + 1] || 'Выбрать';
       el.querySelector('.flip').textContent = `1 ${base} = x ${quote} ⇄`;
       el.querySelectorAll('.q').forEach(h => h.textContent = `${quote} за 1 ${base}`);
+
+      // Подсказка: какой курс должен быть больше, чтобы компания была в плюсе
+      const rule = el.querySelector('.rule');
+      const need = leg.inverse ? 'меньше' : 'больше';
+      const rs = parseNum(leg.rs), rc = parseNum(leg.rc);
+      rule.className = 'rule';
+      if (rs > 0 && rc > 0) {
+        const good = leg.inverse ? rs < rc : rs > rc;
+        rule.classList.add(rs === rc ? 'neg' : good ? 'pos' : 'neg');
+        rule.textContent = rs === rc
+          ? `⚠ Курсы равны — на этом этапе прибыли нет. Для прибыли курс поставщика должен быть ${need} курса клиента.`
+          : good
+            ? `✓ Курс поставщика ${need} курса клиента — этап в плюсе.`
+            : `⚠ Для прибыли курс поставщика должен быть ${need} курса клиента — сейчас этап в минусе.`;
+      } else {
+        rule.textContent = `Для прибыли курс поставщика должен быть ${need} курса клиента.`;
+      }
       const st = r.steps[i];
       el.querySelector('.os').textContent = st ? fmtAmt(st.sup, to) : '—';
       el.querySelector('.oc').textContent = st ? fmtAmt(st.cli, to) : '—';
