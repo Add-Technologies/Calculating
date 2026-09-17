@@ -102,6 +102,8 @@
   .pick-item { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 7px 8px; border-radius: 6px; text-align: left; }
   .pick-item:hover, .pick-item.active { background: var(--accent-soft); filter: none; }
   .pick-item.current { color: var(--accent); }
+  .pick-item.blocked { opacity: .45; cursor: not-allowed; }
+  .pick-item.blocked:hover { background: none; }
   .pick-item b { min-width: 48px; }
   .pick-item span { color: var(--muted); font-size: 13px; flex: 1; }
   .pick-item .rm { color: var(--muted); padding: 0 4px; font-size: 12px; }
@@ -414,12 +416,13 @@
 
   // ---- Выбор валюты ----
   const picker = $('picker'), pickerSearch = $('pickerSearch'), pickerList = $('pickerList');
-  let pickerState = null; // { anchor, current, onPick }
+  let pickerState = null; // { anchor, current, onPick, exclude }
 
-  function openPicker(anchor, current, onPick) {
+  // exclude — соседние валюты маршрута: подряд одна и та же валюта недопустима
+  function openPicker(anchor, current, onPick, exclude = []) {
     if (pickerState?.anchor === anchor) return closePicker();
     closePicker();
-    pickerState = { anchor, current, onPick };
+    pickerState = { anchor, current, onPick, exclude: exclude.filter(Boolean) };
     anchor.classList.add('open');
     picker.hidden = false;
     pickerSearch.value = '';
@@ -446,6 +449,10 @@
   }
 
   function choose(code) {
+    if (pickerState.exclude.includes(code)) {
+      toast(`${code} уже стоит рядом в маршруте — выберите другую валюту`);
+      return;
+    }
     const cb = pickerState.onPick;
     closePicker();
     cb(code);
@@ -470,12 +477,15 @@
       pickerList.appendChild(g);
       list.forEach(c => {
         const b = document.createElement('button');
-        b.className = 'pick-item' + (c.code === pickerState.current ? ' current' : '') + (raw && first ? ' active' : '');
+        const blocked = pickerState.exclude.includes(c.code);
+        b.className = 'pick-item' + (c.code === pickerState.current ? ' current' : '')
+          + (blocked ? ' blocked' : '') + (raw && first && !blocked ? ' active' : '');
         b.dataset.code = c.code;
-        first = false;
+        if (!blocked) first = false;
         b.innerHTML = '<b></b><span></span>';
         b.querySelector('b').textContent = c.code;
-        b.querySelector('span').textContent = c.name;
+        b.querySelector('span').textContent = blocked ? 'уже соседняя в маршруте' : c.name;
+        if (blocked) b.title = 'Соседние валюты в маршруте должны быть разными';
         if (c.custom) {
           const rm = document.createElement('i');
           rm.className = 'rm';
@@ -573,10 +583,12 @@
   // ---- Расчёт цепочки ----
   // Каждый этап: сумма_в_следующей_валюте = сумма × курс (или ÷ курс, если котировка обратная).
   // Поставщик и клиент считаются по своим курсам независимо, прибыль — разница в итоговой валюте.
+  const hasAdjacentDuplicates = () => S.currencies.some((c, i) => i && c && c === S.currencies[i - 1]);
+
   function compute() {
     const volume = parseNum(S.volume);
     const steps = [];
-    let sup = volume, cli = volume, ok = isFinite(volume) && volume > 0;
+    let sup = volume, cli = volume, ok = isFinite(volume) && volume > 0 && !hasAdjacentDuplicates();
     S.legs.forEach((leg, i) => {
       const rs = parseNum(leg.rs), rc = parseNum(leg.rc);
       if (!(rs > 0) || !(rc > 0)) ok = false;
@@ -633,7 +645,7 @@
         S.currencies[i + 1] = code;
         autoOrient(i);
         update();
-      }));
+      }, [S.currencies[i], S.currencies[i + 2]]));
       // Переворот котировки: курсы пересчитываются в 1 ÷ курс, итог сделки не меняется
       q('.flip').addEventListener('click', () => {
         leg.inverse = !leg.inverse;
@@ -727,7 +739,7 @@
     S.currencies[0] = code;
     autoOrient(0);
     update();
-  }));
+  }, [S.currencies[1]]));
 
   function update() {
     const cur = S.currencies;
@@ -781,7 +793,7 @@
     // Итоги
     const warns = [];
     if (cur.some(c => !c)) warns.push('Укажите валюту на каждом этапе.');
-    if (cur.some((c, i) => i && c && c === cur[i - 1])) warns.push('Соседние валюты в маршруте совпадают.');
+    if (hasAdjacentDuplicates()) warns.push('Соседние валюты в маршруте совпадают — выберите разные валюты, иначе расчёт невозможен.');
 
     if (!r.ok) {
       ['sumSupplier', 'sumClient', 'profit', 'spread', 'margin', 'profitStart'].forEach(id => $(id).textContent = '—');
@@ -886,6 +898,7 @@
 
   $('addBtn').onclick = () => {
     const r = compute();
+    if (hasAdjacentDuplicates()) { alert('Соседние валюты в маршруте должны быть разными'); return; }
     if (!r.ok || S.currencies.some(c => !c)) { alert('Проверьте объём, валюты и курсы'); return; }
     deals.push({
       date: Date.now(),
