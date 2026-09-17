@@ -343,7 +343,7 @@
     </details>
 
     <details open id="secCity">
-      <summary>Бишкек: средний и лучший <small>сом за 1</small></summary>
+      <summary>Бишкек: средний курс <small>сом за 1, за 2 часа</small></summary>
       <div id="cityBody"></div>
     </details>
 
@@ -1011,17 +1011,13 @@
   function renderCity() {
     const body = $('cityBody'), city = ratesData.bishkek || {};
     body.innerHTML = '';
-    if (city.error || !city.average) { body.append(rtable(['Валюта'], [errRow(5, 'нет данных')])); return; }
+    if (city.error || !city.average) { body.append(rtable(['Валюта'], [errRow(3, 'нет данных')])); return; }
     const codes = Object.keys(city.average);
     body.append(rtable(
-      ['Валюта', 'Ср. пок.', 'Ср. прод.', 'Лучш. пок.', 'Лучш. прод.'],
+      ['Валюта', 'Покупка', 'Продажа'],
       codes.map(code => {
-        const a = city.average[code] || {}, b = city.best?.[code] || {};
-        return el('tr', {}, [
-          td(code),
-          td(rateBtn(a.buy, code, 'KGS')), td(rateBtn(a.sell, code, 'KGS')),
-          td(rateBtn(b.buy, code, 'KGS')), td(rateBtn(b.sell, code, 'KGS')),
-        ]);
+        const a = city.average[code] || {};
+        return el('tr', {}, [td(code), td(rateBtn(a.buy, code, 'KGS')), td(rateBtn(a.sell, code, 'KGS'))]);
       }),
     ));
   }
