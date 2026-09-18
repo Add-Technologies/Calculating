@@ -1044,10 +1044,12 @@ async function loadRates(manual = false) {
       fetchRates(COMPUTER_RATES_URL + '?t=' + Date.now()).then(data => ({ data, src: 'computer' })),
       fetchRates('rates.json').then(data => ({ data, src: 'file' })),
     ]);
-    for (const r of results) {
-      if (r.status !== 'fulfilled') continue;
-      if (!best || new Date(r.value.data.updatedAt) > new Date(best.data.updatedAt)) best = r.value;
-    }
+    // С компьютера — полный набор источников (в т.ч. Investing), поэтому он в приоритете,
+    // пока не старше 5 минут; иначе берём что свежее
+    const [computer, site] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+    const age = x => Date.now() - new Date(x.data.updatedAt);
+    if (computer && age(computer) < 5 * 60 * 1000) best = computer;
+    else best = [computer, site].filter(Boolean).sort((x, y) => age(x) - age(y))[0] || null;
   }
   if (best) {
     ratesData = best.data;
