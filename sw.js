@@ -1,6 +1,8 @@
 // Service worker: приложение открывается без интернета.
 // Сначала сеть (чтобы сразу получать обновления), при отсутствии связи — кэш.
-const CACHE = 'treasury-v2';
+const CACHE = 'treasury-v3';
+const FONTS_CACHE = 'treasury-fonts';
+const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const ASSETS = [
   './',
   './index.html',
@@ -17,14 +19,25 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== FONTS_CACHE).map(k => caches.delete(k))))
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
   const req = event.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const url = new URL(req.url);
+
+  // Шрифт Inter с Google Fonts: сначала кэш (файлы шрифтов не меняются), чтобы работал без интернета
+  if (req.method === 'GET' && FONT_HOSTS.includes(url.hostname)) {
+    event.respondWith(caches.open(FONTS_CACHE).then(cache => cache.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
+      return res;
+    }))));
+    return;
+  }
+
+  if (req.method !== 'GET' || url.origin !== location.origin) return;
   event.respondWith(
     fetch(req)
       .then(res => {
