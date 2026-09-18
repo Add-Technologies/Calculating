@@ -76,3 +76,5 @@ $env:HOST="0.0.0.0"; node server.js
 | `lib/rates.js` | сбор курсов с valuta.kg, бирж, ЦБ РФ, Profinance, Investing |
 | `lib/browser.js` | фоновый Chrome/Edge для сайтов за защитой Cloudflare |
 | `.github/workflows/pages.yml` | публикация на Pages и обновление курсов |
+| `.github/workflows/deploy.yml` | сборка Docker-образа и деплой на VPS |
+| `Dockerfile`, `docker-compose.vps.yml` | образ и запуск на VPS за Caddy |
