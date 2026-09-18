@@ -52,6 +52,53 @@ jobs:
       - build
     steps:
       - uses: actions/checkout@v5
+      # Первичная настройка сервера — только то, чего ещё нет. Повторные
+      # деплои проходят этот шаг без изменений. Caddy (домен и
+      # reverse_proxy 127.0.0.1:8091) настраивается вручную и здесь не трогается.
+      - name: Prepare server (first deploy only)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASSWORD }}
+          script: |
+            set -e
+            DIR=/opt/docker/calculator
+            APP_PORT=8091
+
+            # Каталог для compose и .env. /opt обычно принадлежит root, поэтому
+            # при неудаче — через sudo -n (без запроса пароля: SSH здесь
+            # неинтерактивный) и отдать каталог пользователю деплоя.
+            if [ ! -d "$DIR" ]; then
+              echo "First deploy: creating $DIR"
+              mkdir -p "$DIR" 2>/dev/null || {
+                sudo -n mkdir -p "$DIR" && sudo -n chown "$(id -u):$(id -g)" "$DIR"
+              }
+            fi
+            [ -w "$DIR" ] || { echo "ERROR: $DIR is not writable by $(id -un)"; exit 1; }
+
+            # .env читает docker-compose.vps.yml (DOCKERHUB_USER, APP_PORT).
+            # Создаётся один раз: дальше файл принадлежит серверу, и ручные
+            # правки (например, другой порт) деплой не затирает.
+            if [ ! -f "$DIR/.env" ]; then
+              # Порт проверяется только при первичной настройке: потом его
+              # законно держит наш же контейнер.
+              if ss -ltnH "sport = :$APP_PORT" | grep -q .; then
+                echo "ERROR: port $APP_PORT is already in use on the server:"
+                ss -ltnp "sport = :$APP_PORT"
+                echo "Pick a free port, then create $DIR/.env manually with APP_PORT=<port>."
+                exit 1
+              fi
+              printf 'DOCKERHUB_USER=%s\nAPP_PORT=%s\n' "${{ secrets.DOCKER_USERNAME }}" "$APP_PORT" > "$DIR/.env"
+              chmod 600 "$DIR/.env"
+              echo "Created $DIR/.env (APP_PORT=$APP_PORT)"
+            else
+              echo "$DIR/.env exists — left untouched:"
+              sed 's/=.*/=…/' "$DIR/.env"
+            fi
+      # docker-compose.vps.yml из репозитория зеркалируется на сервер при
+      # каждом деплое; следующий шаг делает из него docker-compose.yml с
+      # закреплённым SHA образа.
       - name: Copy docker-compose to server
         uses: appleboy/scp-action@v0.1.7
         with:
