@@ -362,39 +362,29 @@
   .rates-msg { padding: 4px 6px 8px; font-size: 12px; color: var(--faint); }
   .rates-msg a { color: var(--muted); }
 
-  /* Широкий экран: калькулятор прижат влево и закреплён, курсы занимают всё остальное в 2–3 столбца */
+  /* Широкий экран: курсы бирж слева, калькулятор по центру (закреплён), банки и обменки справа.
+     Панель курсов «растворяется» (display: contents), и её блоки встают прямо в сетку страницы. */
   @media (min-width: 1500px) {
     .wrap, .topbar-in { max-width: 2560px; }
-    .layout { grid-template-columns: minmax(560px, 800px) minmax(0, 1fr); gap: 20px; }
+    .layout {
+      grid-template-columns: minmax(360px, 1fr) minmax(540px, 780px) minmax(360px, 1fr);
+      grid-template-rows: auto auto auto auto 1fr;
+      column-gap: 20px; align-items: start;
+    }
+    .rates { display: contents; }
     .main {
+      grid-column: 2; grid-row: 1 / -1; align-self: start;
       position: sticky; top: 80px; max-height: calc(100vh - 96px); overflow-y: auto;
-      overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px;
+      overscroll-behavior: contain; scrollbar-width: thin; padding: 0 4px;
     }
-    /* Явная сетка: 1) биржи, USD/RUB, НБКР ежедневные  2) банки  3) НБКР еженедельные.
-       При двух столбцах НБКР еженедельные встают под первый столбец. */
-    .rates {
-      position: static; max-height: none; overflow: visible;
-      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-      grid-template-rows: auto auto auto 1fr auto; column-gap: 16px; align-items: start;
-    }
-    .rates-top, .rates-msg { grid-column: 1 / -1; }
-    .rcol-1  { grid-column: 1; grid-row: 2; }
-    .rcol-1b { grid-column: 1; grid-row: 3; }
-    .rcol-2  { grid-column: 2; grid-row: 2 / span 3; }
-    .rcol-3  { grid-column: 1; grid-row: 4; }
-    .rates-msg { grid-row: 5; }
-    .rates-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-    .rates-top .rates-head { margin: 0; }
-    .rates-top .rates-status { margin: 0; flex: 1; }
-    .rates-top .rates-tip { flex-basis: 100%; }
-  }
-  @media (min-width: 2100px) {
-    .rates { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto 1fr auto; }
-    .rcol-1  { grid-column: 1; grid-row: 2; }
-    .rcol-1b { grid-column: 1; grid-row: 3; }
-    .rcol-2  { grid-column: 2; grid-row: 2 / span 2; }
-    .rcol-3  { grid-column: 3; grid-row: 2 / span 2; }
-    .rates-msg { grid-row: 4; }
+    .rates-top  { grid-column: 1; grid-row: 1; }
+    .rcol-1     { grid-column: 1; grid-row: 2; }
+    .rcol-1b    { grid-column: 1; grid-row: 3; }
+    .rcol-3     { grid-column: 1; grid-row: 4; }
+    .rates-msg  { grid-column: 1; grid-row: 5; }
+    .rcol-2     { grid-column: 3; grid-row: 1 / -1; }
+    /* Журнал в узкой центральной колонке: заголовки переносятся, чтобы не было горизонтальной прокрутки */
+    .tbl-wrap th { white-space: normal; }
   }
 
   @media (max-width: 560px) {
@@ -559,7 +549,7 @@
     </div>
 
     <div class="rcol rcol-3">
-    <details open id="secNbkrWeekly" class="rates-block">
+    <details id="secNbkrWeekly" class="rates-block">
       <summary>НБКР — еженедельные <small id="nbkrWeeklyDate"></small></summary>
       <div id="nbkrWeeklyBody"></div>
     </details>
