@@ -74,7 +74,7 @@ $env:HOST="0.0.0.0"; node server.js
 ## Установка на телефон
 
 Нужен адрес `https://` — GitHub Pages: **Settings → Pages → Source: GitHub Actions**.
-Сайт: https://chiksan-01.github.io/Calculating/
+Сайт: https://add-technologies.github.io/Calculating/
 
 - **Android (Chrome):** открыть ссылку → «Установить» (или меню ⋮ → «Установить приложение»).
 - **iPhone (Safari):** открыть ссылку → «Поделиться» → «На экран «Домой»».

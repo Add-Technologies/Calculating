@@ -4,14 +4,19 @@
 # Docker Hub <DOCKER_USERNAME>/addtech-calculator, на сервере в
 # /opt/docker/calculator/ лежит docker-compose.vps.yml с подставленным SHA.
 #
-# На push в main — сборка и деплой; вручную (Run workflow) — только сборка,
-# чтобы можно было проверить образ, не трогая сервер.
+# Только вручную: Actions → «Docker-образ и деплой на VPS» → Run workflow.
+# Основная площадка — GitHub Pages (pages.yml), VPS обновляется по решению
+# человека, а не на каждый push в main. Снять галочку «deploy» — будет только
+# сборка образа, без выкладки на сервер.
 name: Docker-образ и деплой на VPS
 
 on:
   workflow_dispatch:
-  push:
-    branches: ['main']
+    inputs:
+      deploy:
+        description: 'Выложить на VPS (иначе только собрать образ)'
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -46,7 +51,7 @@ jobs:
 
   deploy:
     name: Deploy calculator on VPS
-    if: github.event_name == 'push'
+    if: inputs.deploy
     runs-on: ubuntu-latest
     needs:
       - build

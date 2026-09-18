@@ -30,7 +30,7 @@ const isPublic = rel => PUBLIC_FILES.has(rel) || PUBLIC_DIRS.some(d => rel.start
 
 // Откуда брать упавшие источники (см. lib/fallback.js). Порядок не важен —
 // побеждает более свежий JSON. Тот же репозиторий, что в app.js.
-const RATES_REPO = process.env.RATES_REPO || 'Chiksan-01/Calculating';
+const RATES_REPO = process.env.RATES_REPO || 'Add-Technologies/Calculating';
 const [REPO_OWNER, REPO_NAME] = RATES_REPO.split('/');
 const FALLBACKS = [
   { label: 'с компьютера', url: `https://raw.githubusercontent.com/${RATES_REPO}/rates/rates.json` },

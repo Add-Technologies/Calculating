@@ -9,7 +9,7 @@
 const { execFileSync } = require('child_process');
 const { fetchAllRates } = require('./lib/rates');
 
-const REPO = process.env.RATES_REPO || 'Chiksan-01/Calculating';
+const REPO = process.env.RATES_REPO || 'Add-Technologies/Calculating';
 const BRANCH = 'rates';
 const FILE = 'rates.json';
 const INTERVAL_MS = Number(process.env.RATES_INTERVAL_SEC || 60) * 1000;

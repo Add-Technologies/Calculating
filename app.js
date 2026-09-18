@@ -1019,7 +1019,7 @@ function applyDefaultSupplierRate() {
 const REPO = (() => {
   const m = location.hostname.match(/^([^.]+)\.github\.io$/);
   const seg = location.pathname.split('/').filter(Boolean)[0];
-  return m && seg ? { owner: m[1], repo: seg } : { owner: 'Chiksan-01', repo: 'Calculating' };
+  return m && seg ? { owner: m[1], repo: seg } : { owner: 'Add-Technologies', repo: 'Calculating' };
 })();
 const COMPUTER_RATES_URL = `https://raw.githubusercontent.com/${REPO.owner}/${REPO.repo}/rates/rates.json`;
 const SOURCE_LABEL = { live: 'онлайн', computer: 'с компьютера казначейства', file: 'автообновление на сайте' };
