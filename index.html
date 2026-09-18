@@ -361,7 +361,41 @@
   .rates-top .rates-tip { margin-bottom: 0; }
   .rates-msg { padding: 4px 6px 8px; font-size: 12px; color: var(--faint); }
   .rates-msg a { color: var(--muted); }
-  .nbkr-more { width: 100%; margin-top: 10px; padding: 7px 12px; font-size: 12.5px; }
+
+  /* Широкий экран: калькулятор прижат влево и закреплён, курсы занимают всё остальное в 2–3 столбца */
+  @media (min-width: 1500px) {
+    .wrap, .topbar-in { max-width: 2560px; }
+    .layout { grid-template-columns: minmax(560px, 800px) minmax(0, 1fr); gap: 20px; }
+    .main {
+      position: sticky; top: 80px; max-height: calc(100vh - 96px); overflow-y: auto;
+      overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px;
+    }
+    /* Явная сетка: 1) биржи, USD/RUB, НБКР ежедневные  2) банки  3) НБКР еженедельные.
+       При двух столбцах НБКР еженедельные встают под первый столбец. */
+    .rates {
+      position: static; max-height: none; overflow: visible;
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: auto auto auto 1fr auto; column-gap: 16px; align-items: start;
+    }
+    .rates-top, .rates-msg { grid-column: 1 / -1; }
+    .rcol-1  { grid-column: 1; grid-row: 2; }
+    .rcol-1b { grid-column: 1; grid-row: 3; }
+    .rcol-2  { grid-column: 2; grid-row: 2 / span 3; }
+    .rcol-3  { grid-column: 1; grid-row: 4; }
+    .rates-msg { grid-row: 5; }
+    .rates-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+    .rates-top .rates-head { margin: 0; }
+    .rates-top .rates-status { margin: 0; flex: 1; }
+    .rates-top .rates-tip { flex-basis: 100%; }
+  }
+  @media (min-width: 2100px) {
+    .rates { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto 1fr auto; }
+    .rcol-1  { grid-column: 1; grid-row: 2; }
+    .rcol-1b { grid-column: 1; grid-row: 3; }
+    .rcol-2  { grid-column: 2; grid-row: 2 / span 2; }
+    .rcol-3  { grid-column: 3; grid-row: 2 / span 2; }
+    .rates-msg { grid-row: 4; }
+  }
 
   @media (max-width: 560px) {
     .wrap { padding-top: 24px; }
@@ -493,6 +527,7 @@
     <div class="rates-tip">Нажмите на поле курса в калькуляторе, затем на курс здесь — он подставится.</div>
     </div>
 
+    <div class="rcol rcol-1">
     <details open id="secCrypto" class="rates-block">
       <summary>USDT/RUB — биржи <small>₽ за 1 USDT</small></summary>
       <div id="cryptoBody"></div>
@@ -503,6 +538,9 @@
       <div id="usdBody"></div>
     </details>
 
+    </div>
+
+    <div class="rcol rcol-2">
     <details open id="secMembers" class="rates-block">
       <summary>Банки и обменки <small>сом за 1</small></summary>
       <div class="seg" id="memCur"></div>
@@ -510,10 +548,22 @@
       <div id="membersBody"></div>
     </details>
 
+    </div>
+
+    <div class="rcol rcol-1b">
     <details open id="secNbkr" class="rates-block">
-      <summary>НБКР <small id="nbkrDate"></small></summary>
+      <summary>НБКР — ежедневные <small id="nbkrDate"></small></summary>
       <div id="nbkrBody"></div>
     </details>
+
+    </div>
+
+    <div class="rcol rcol-3">
+    <details open id="secNbkrWeekly" class="rates-block">
+      <summary>НБКР — еженедельные <small id="nbkrWeeklyDate"></small></summary>
+      <div id="nbkrWeeklyBody"></div>
+    </details>
+    </div>
 
     <div class="rates-msg">Источники: <a href="https://valuta.kg/" target="_blank" rel="noopener">valuta.kg</a>, <a href="https://www.nbkr.kg/index1.jsp?item=1562&amp;lang=RUS" target="_blank" rel="noopener">nbkr.kg</a>, ЦБ РФ, Profinance, Investing и сайты бирж.</div>
   </aside>
@@ -1232,45 +1282,22 @@
     body.append(rtable(['Источник', 'Bid', 'Ask'], rows.length ? rows : [errRow(3, 'нет данных')]));
   }
 
-  // 1 валюту, 2 валюты, 5 валют
-  const plural = (n, one, few, many) => {
-    const m10 = n % 10, m100 = n % 100;
-    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-  };
-
   function renderNbkr() {
-    const body = $('nbkrBody'), nb = ratesData.nbkr || {};
-    body.innerHTML = '';
-    $('nbkrDate').textContent = nb.date ? `сом · на ${nb.date}` : 'сом';
-    if (nb.error || !nb.rates) { body.append(rtable(['Валюта', 'Курс'], [errRow(2, 'нет данных')])); return; }
-
-    // Ежедневные курсы (USD, EUR, RUB, KZT, CNY) всегда видны, еженедельные — по кнопке
-    const daily = nb.rates.filter(r => !r.weekly), weekly = nb.rates.filter(r => r.weekly);
-    const shown = ratesUi.nbkrAll ? nb.rates : daily;
+    const nb = ratesData.nbkr || {};
     const row = r => el('tr', {}, [
       td(r.nominal > 1 ? `${r.code} (за ${r.nominal})` : r.code),
       td(rateBtn(r.rate, r.code, 'KGS', { per: r.nominal })),
     ]);
-    const rows = [];
-    shown.forEach((r, i) => {
-      if (r.weekly && !shown[i - 1]?.weekly) {
-        rows.push(el('tr', {}, [el('td', {
-          className: 'err', colSpan: 2,
-          textContent: `Еженедельные курсы${nb.weeklyDate ? ` на ${nb.weeklyDate}` : ''}`,
-        })]));
-      }
-      rows.push(row(r));
-    });
-    body.append(rtable(['Валюта', 'Сом'], rows));
-
-    if (weekly.length) {
-      const more = el('button', {
-        className: 'nbkr-more',
-        textContent: ratesUi.nbkrAll ? 'Скрыть еженедельные курсы' : `Показать ещё ${weekly.length} ${plural(weekly.length, 'валюту', 'валюты', 'валют')} (еженедельные)`,
-      });
-      more.onclick = () => { ratesUi.nbkrAll = !ratesUi.nbkrAll; saveRatesUi(); renderNbkr(); };
-      body.append(more);
-    }
+    // Ежедневные (USD, EUR, RUB, KZT, CNY) и еженедельные (остальные валюты) — отдельными блоками
+    const fill = (bodyId, dateId, list, date) => {
+      const body = $(bodyId);
+      body.innerHTML = '';
+      $(dateId).textContent = date ? `сом · на ${date}` : 'сом';
+      body.append(rtable(['Валюта', 'Сом'], list.length ? list.map(row) : [errRow(2, 'нет данных')]));
+    };
+    const rates = nb.error || !nb.rates ? [] : nb.rates;
+    fill('nbkrBody', 'nbkrDate', rates.filter(r => !r.weekly), nb.date);
+    fill('nbkrWeeklyBody', 'nbkrWeeklyDate', rates.filter(r => r.weekly), nb.weeklyDate);
   }
 
   function renderMembers() {
