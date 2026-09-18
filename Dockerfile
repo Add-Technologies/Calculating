@@ -25,7 +25,9 @@ ENV HOST=0.0.0.0
 RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont
 ENV CHROME_PATH=/usr/bin/chromium
 
-COPY server.js sw.js index.html manifest.webmanifest ./
+# Клиентские файлы — те же, что в PUBLIC в server.js и в сборке pages.yml.
+# lib/ целиком: rates.js и browser.js нужны серверу, calc.js — странице.
+COPY server.js sw.js index.html styles.css app.js manifest.webmanifest ./
 COPY lib ./lib
 COPY icons ./icons
 
