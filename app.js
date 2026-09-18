@@ -824,7 +824,7 @@ function rtable(headers, rows) {
   const tbody = el('tbody', {}, rows);
   return el('table', { className: 'rt' }, [thead, tbody]);
 }
-const errRow = (cols, text) => el('tr', {}, [el('td', { className: 'err', colSpan: cols, textContent: text })]);
+const errRow = (cols, text, title) => el('tr', {}, [el('td', { className: 'err', colSpan: cols, textContent: text, ...(title ? { title } : {}) })]);
 
 function renderCrypto() {
   const body = $('cryptoBody');
@@ -896,7 +896,8 @@ function renderMembers() {
   body.innerHTML = '';
   $('memCur').innerHTML = '';
   $('memType').innerHTML = '';
-  if (!Array.isArray(members)) { body.append(rtable(['Название'], [errRow(3, 'нет данных')])); return; }
+  // Причина — в подсказке при наведении, как у бирж и USD/RUB
+  if (!Array.isArray(members)) { body.append(rtable(['Название'], [errRow(3, 'нет данных', members && members.error)])); return; }
 
   const curs = [...new Set(members.flatMap(m => Object.keys(m.rates)))];
   if (!curs.includes(ratesUi.cur)) ratesUi.cur = curs[0];
