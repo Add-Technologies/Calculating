@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { fetchAllRates } = require('./lib/rates');
+const { mergeRates, needsFallback } = require('./lib/fallback');
 
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -27,11 +28,33 @@ const PUBLIC_FILES = new Set(['index.html', 'styles.css', 'app.js', 'sw.js', 'ma
 const PUBLIC_DIRS = ['icons/'];
 const isPublic = rel => PUBLIC_FILES.has(rel) || PUBLIC_DIRS.some(d => rel.startsWith(d) && !rel.slice(d.length).includes('/') && !rel.includes('..'));
 
+// Откуда брать упавшие источники (см. lib/fallback.js). Порядок не важен —
+// побеждает более свежий JSON. Тот же репозиторий, что в app.js.
+const RATES_REPO = process.env.RATES_REPO || 'Chiksan-01/Calculating';
+const [REPO_OWNER, REPO_NAME] = RATES_REPO.split('/');
+const FALLBACKS = [
+  { label: 'с компьютера', url: `https://raw.githubusercontent.com/${RATES_REPO}/rates/rates.json` },
+  { label: 'с сайта', url: `https://${REPO_OWNER.toLowerCase()}.github.io/${REPO_NAME}/rates.json` },
+];
+
+async function withFallback(live) {
+  if (!needsFallback(live)) return live;
+  const results = await Promise.allSettled(FALLBACKS.map(async f => {
+    const res = await fetch(f.url + '?t=' + Date.now(), { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'aegis-calculator' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { label: f.label, data: await res.json() };
+  }));
+  const merged = mergeRates(live, results.filter(r => r.status === 'fulfilled').map(r => r.value), Date.now());
+  if (merged.fallback) console.log('Курсы: подменены', merged.fallback.map(f => `${f.what} (${f.from})`).join(', '));
+  return merged;
+}
+
+// Курсы: не чаще раза в минуту, параллельные запросы ждут один и тот же сбор
 const RATES_TTL_MS = 60 * 1000;
 let ratesCache = null, ratesAt = 0, ratesPending = null;
 function getRates() {
   if (ratesCache && Date.now() - ratesAt < RATES_TTL_MS) return Promise.resolve(ratesCache);
-  ratesPending ??= fetchAllRates()
+  ratesPending ??= fetchAllRates().then(withFallback)
     .then(data => { ratesCache = data; ratesAt = Date.now(); return data; })
     .finally(() => { ratesPending = null; });
   return ratesPending;
