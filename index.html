@@ -160,6 +160,8 @@
   .rule { font-size: 13px; color: var(--muted); margin-top: 10px; }
   .leg-out { font-size: 14px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; gap: 6px; font-variant-numeric: tabular-nums; }
   .leg-out b { color: var(--text); font-weight: 600; }
+  .leg-out .side { display: flex; flex-direction: column; gap: 2px; }
+  .leg-out .side span { font-size: 12.5px; }
 
   .results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .stat .k { font-size: 13px; color: var(--muted); }
@@ -367,7 +369,7 @@
   @media (min-width: 1500px) {
     .wrap, .topbar-in { max-width: 2560px; }
     .layout {
-      grid-template-columns: minmax(360px, 1fr) minmax(540px, 780px) minmax(360px, 1fr);
+      grid-template-columns: minmax(320px, 1fr) minmax(620px, 1.9fr) minmax(320px, 1fr);
       grid-template-rows: auto auto auto auto 1fr;
       column-gap: 20px; align-items: start;
     }
@@ -609,6 +611,13 @@
   const rebuildCur = () => { CUR = Object.fromEntries(allCurrencies().map(c => [c.code, c])); };
   rebuildCur();
 
+  // Как валюта называется в пояснениях: «продаёт рубли за сомы»; для остальных — тикер
+  const PLURAL = {
+    RUB: 'рубли', KGS: 'сомы', USD: 'доллары', EUR: 'евро', KZT: 'тенге', UZS: 'сумы', TJS: 'сомони',
+    CNY: 'юани', TRY: 'лиры', AED: 'дирхамы', GBP: 'фунты',
+  };
+  const plOf = code => PLURAL[code] || code || '?';
+
   // Незнакомый тикер считаем криптой: 8 знаков после запятой
   const decOf = code => CUR[code] ? CUR[code].dec : 8;
   const usdOf = code => CUR[code]?.usd ?? 1;
@@ -619,10 +628,11 @@
   let pickerState = null; // { anchor, current, onPick, exclude }
 
   // exclude — соседние валюты маршрута: подряд одна и та же валюта недопустима
-  function openPicker(anchor, current, onPick, exclude = []) {
+  // swap — { code, onSwap }: валюта с другого конца этапа; её выбор меняет валюты этапа местами
+  function openPicker(anchor, current, onPick, exclude = [], swap = null) {
     if (pickerState?.anchor === anchor) return closePicker();
     closePicker();
-    pickerState = { anchor, current, onPick, exclude: exclude.filter(Boolean) };
+    pickerState = { anchor, current, onPick, exclude: exclude.filter(Boolean), swap };
     anchor.classList.add('open');
     picker.hidden = false;
     pickerSearch.value = '';
@@ -649,6 +659,12 @@
   }
 
   function choose(code) {
+    if (pickerState.swap && code === pickerState.swap.code) {
+      const onSwap = pickerState.swap.onSwap;
+      closePicker();
+      onSwap();
+      return;
+    }
     if (pickerState.exclude.includes(code)) {
       toast(`${code} уже стоит рядом в маршруте — выберите другую валюту`);
       return;
@@ -684,7 +700,9 @@
         if (!blocked) first = false;
         b.innerHTML = '<b></b><span></span>';
         b.querySelector('b').textContent = c.code;
-        b.querySelector('span').textContent = blocked ? 'уже соседняя в маршруте' : c.name;
+        const swapHere = !blocked && pickerState.swap?.code === c.code;
+        b.querySelector('span').textContent = blocked ? 'уже соседняя в маршруте'
+          : swapHere ? `${c.name} · поменять местами ⇄` : c.name;
         if (blocked) b.title = 'Соседние валюты в маршруте должны быть разными';
         if (c.custom) {
           const rm = document.createElement('i');
@@ -826,8 +844,8 @@
           <div><label>Курс поставщика</label><input class="rs" inputmode="decimal"><div class="hint q"></div></div>
           <div><label>Курс клиента</label><input class="rc" inputmode="decimal"><div class="hint q"></div></div>
           <div class="leg-out">
-            <div>Поставщик: <b class="os">—</b></div>
-            <div>Клиент: <b class="oc">—</b></div>
+            <div class="side"><span class="ws"></span><b class="os">—</b></div>
+            <div class="side"><span class="wc"></span><b class="oc">—</b></div>
           </div>
         </div>
         <div class="rule"></div>`;
@@ -836,11 +854,15 @@
       q('.rc').value = leg.rc = groupDigits(leg.rc);
       q('.del').style.display = S.legs.length > 1 ? '' : 'none';
 
-      q('.cur').addEventListener('click', e => openPicker(e.currentTarget, S.currencies[i + 1], code => {
-        S.currencies[i + 1] = code;
-        autoOrient(i);
-        update();
-      }, [S.currencies[i], S.currencies[i + 2]]));
+      q('.cur').addEventListener('click', e => {
+        // В первом этапе исходную валюту можно выбрать и здесь — тогда валюты этапа меняются местами
+        const swap = i === 0 ? firstLegSwap(S.currencies[0]) : null;
+        openPicker(e.currentTarget, S.currencies[i + 1], code => {
+          S.currencies[i + 1] = code;
+          autoOrient(i);
+          update();
+        }, swap ? [S.currencies[i + 2]] : [S.currencies[i], S.currencies[i + 2]], swap);
+      });
       // Переворот котировки: курсы пересчитываются в 1 ÷ курс, итог сделки не меняется
       q('.flip').addEventListener('click', () => {
         leg.inverse = !leg.inverse;
@@ -930,11 +952,24 @@
 
   $('volume').value = S.volume = groupDigits(S.volume);
   $('volume').addEventListener('input', e => { S.volume = e.target.value; update(); });
+  // Первый этап A → B становится B → A. Котировка («1 RUB = x KGS») и введённые курсы сохраняются,
+  // поэтому инвертируется только направление расчёта (× ↔ ÷).
+  const canSwapFirstLeg = () => S.currencies[2] !== S.currencies[0];
+  function swapFirstLeg() {
+    if (!canSwapFirstLeg()) { toast('Нельзя поменять местами: валюты второго этапа совпадут'); return; }
+    [S.currencies[0], S.currencies[1]] = [S.currencies[1], S.currencies[0]];
+    S.legs[0].inverse = !S.legs[0].inverse;
+    update();
+    toast(`Этап 1: ${S.currencies[0]} → ${S.currencies[1]}, курсы сохранены`);
+  }
+  // Код, выбор которого означает перестановку: в списке исходной валюты — валюта назначения, и наоборот
+  const firstLegSwap = code => canSwapFirstLeg() ? { code, onSwap: swapFirstLeg } : null;
+
   $('startCur').addEventListener('click', e => openPicker(e.currentTarget, S.currencies[0], code => {
     S.currencies[0] = code;
     autoOrient(0);
     update();
-  }, [S.currencies[1]]));
+  }, canSwapFirstLeg() ? [] : [S.currencies[1]], firstLegSwap(S.currencies[1])));
 
   function update() {
     const cur = S.currencies;
@@ -981,8 +1016,13 @@
         rule.textContent = `Для прибыли курс поставщика должен быть ${need} курса клиента.`;
       }
       const st = r.steps[i];
-      el.querySelector('.os').textContent = st?.sup != null ? fmtAmt(st.sup, to) : '—';
-      el.querySelector('.oc').textContent = st?.cli != null ? fmtAmt(st.cli, to) : '—';
+      // Поставщик отдаёт валюту назначения и получает исходную; клиент — наоборот
+      const prevSup = i === 0 ? r.volume : r.steps[i - 1]?.sup;
+      const prevCli = i === 0 ? r.volume : r.steps[i - 1]?.cli;
+      el.querySelector('.ws').textContent = `Поставщик продаёт ${plOf(to)} за ${plOf(from)}`;
+      el.querySelector('.wc').textContent = `Клиент продаёт ${plOf(from)} за ${plOf(to)}`;
+      el.querySelector('.os').textContent = st?.sup != null ? `${fmtAmt(st.sup, to)} за ${fmtAmt(prevSup, from)}` : '—';
+      el.querySelector('.oc').textContent = st?.cli != null ? `${fmtAmt(prevCli, from)} за ${fmtAmt(st.cli, to)}` : '—';
     });
 
     // Итоги
