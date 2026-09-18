@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Калькулятор казначейства</title>
+<title>Калькулятор курсов Aegis</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -18,7 +18,7 @@
 </script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Казначейство">
+<meta name="apple-mobile-web-app-title" content="Курсы Aegis">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
   /* Палитра в стиле aegis.kg: тёплый светлый фон, почти чёрный текст, тёмно-синий акцент */
@@ -350,6 +350,19 @@
   .toast { background: var(--text); color: var(--card); border-radius: 999px; padding: 11px 20px; font-weight: 500; }
   .picker-group { font-family: var(--mono); letter-spacing: .14em; }
 
+  /* Панель курсов: колонка отдельных блоков-карточек */
+  .rates { background: none; border: 0; padding: 0; border-radius: 0; }
+  .rates-block {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 16px 18px; margin-bottom: 12px;
+  }
+  .rates details.rates-block { border-top: 1px solid var(--border); padding: 16px 18px 10px; }
+  .rates details.rates-block:not([open]) { padding-bottom: 16px; }
+  .rates-top .rates-tip { margin-bottom: 0; }
+  .rates-msg { padding: 4px 6px 8px; font-size: 12px; color: var(--faint); }
+  .rates-msg a { color: var(--muted); }
+  .nbkr-more { width: 100%; margin-top: 10px; padding: 7px 12px; font-size: 12.5px; }
+
   @media (max-width: 560px) {
     .wrap { padding-top: 24px; }
     .sub { font-size: 15px; margin-bottom: 24px; }
@@ -368,7 +381,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M4 8h14M14 4l4 4-4 4"/><path d="M20 16H6M10 12l-4 4 4 4"/>
       </svg>
-      Казначейство
+      Калькулятор курсов Aegis
     </div>
     <span class="spacer"></span>
     <span class="tag">RUB · KGS · USDT</span>
@@ -377,9 +390,6 @@
 </header>
 
 <div class="wrap">
-  <div class="eyebrow">Калькулятор курсов</div>
-  <h1>Прибыль на разнице <span class="hl">курсов</span>.</h1>
-  <p class="sub">Курс поставщика против курса клиента — фиат и криптовалюты, цепочки конвертаций, живые курсы банков, НБКР и бирж.</p>
 
   <div class="install" id="installBar" hidden>
     <img src="icons/icon-192.png" alt="">
@@ -474,36 +484,38 @@
   </main>
 
   <aside class="rates" id="rates">
+    <div class="rates-block rates-top">
     <div class="rates-head">
       <h2>Курсы</h2>
       <button id="ratesRefresh" title="Обновить">↻ Обновить</button>
     </div>
     <div class="rates-status" id="ratesStatus">Загрузка…</div>
     <div class="rates-tip">Нажмите на поле курса в калькуляторе, затем на курс здесь — он подставится.</div>
+    </div>
 
-    <details open id="secCrypto">
-      <summary>USDT / RUB — биржи <small>₽ за 1 USDT</small></summary>
+    <details open id="secCrypto" class="rates-block">
+      <summary>USDT/RUB — биржи <small>₽ за 1 USDT</small></summary>
       <div id="cryptoBody"></div>
     </details>
 
-    <details open id="secUsd">
-      <summary>USD / RUB <small>₽ за 1 USD</small></summary>
+    <details open id="secUsd" class="rates-block">
+      <summary>USD/RUB <small>₽ за 1 USD</small></summary>
       <div id="usdBody"></div>
     </details>
 
-    <details open id="secNbkr">
-      <summary>Нацбанк КР <small id="nbkrDate"></small></summary>
-      <div id="nbkrBody"></div>
-    </details>
-
-    <details open id="secMembers">
+    <details open id="secMembers" class="rates-block">
       <summary>Банки и обменки <small>сом за 1</small></summary>
       <div class="seg" id="memCur"></div>
       <div class="seg" id="memType"></div>
       <div id="membersBody"></div>
     </details>
 
-    <div class="rates-msg">Источники: <a href="https://valuta.kg/" target="_blank" rel="noopener">valuta.kg</a> и сайты бирж.</div>
+    <details open id="secNbkr" class="rates-block">
+      <summary>НБКР <small id="nbkrDate"></small></summary>
+      <div id="nbkrBody"></div>
+    </details>
+
+    <div class="rates-msg">Источники: <a href="https://valuta.kg/" target="_blank" rel="noopener">valuta.kg</a>, <a href="https://www.nbkr.kg/index1.jsp?item=1562&amp;lang=RUS" target="_blank" rel="noopener">nbkr.kg</a>, ЦБ РФ, Profinance, Investing и сайты бирж.</div>
   </aside>
   </div>
 </div>
@@ -1220,15 +1232,45 @@
     body.append(rtable(['Источник', 'Bid', 'Ask'], rows.length ? rows : [errRow(3, 'нет данных')]));
   }
 
+  // 1 валюту, 2 валюты, 5 валют
+  const plural = (n, one, few, many) => {
+    const m10 = n % 10, m100 = n % 100;
+    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  };
+
   function renderNbkr() {
     const body = $('nbkrBody'), nb = ratesData.nbkr || {};
     body.innerHTML = '';
-    $('nbkrDate').textContent = nb.date ? `на ${nb.date}` : '';
+    $('nbkrDate').textContent = nb.date ? `сом · на ${nb.date}` : 'сом';
     if (nb.error || !nb.rates) { body.append(rtable(['Валюта', 'Курс'], [errRow(2, 'нет данных')])); return; }
-    body.append(rtable(['Валюта', 'Сом'], nb.rates.map(r => el('tr', {}, [
+
+    // Ежедневные курсы (USD, EUR, RUB, KZT, CNY) всегда видны, еженедельные — по кнопке
+    const daily = nb.rates.filter(r => !r.weekly), weekly = nb.rates.filter(r => r.weekly);
+    const shown = ratesUi.nbkrAll ? nb.rates : daily;
+    const row = r => el('tr', {}, [
       td(r.nominal > 1 ? `${r.code} (за ${r.nominal})` : r.code),
       td(rateBtn(r.rate, r.code, 'KGS', { per: r.nominal })),
-    ]))));
+    ]);
+    const rows = [];
+    shown.forEach((r, i) => {
+      if (r.weekly && !shown[i - 1]?.weekly) {
+        rows.push(el('tr', {}, [el('td', {
+          className: 'err', colSpan: 2,
+          textContent: `Еженедельные курсы${nb.weeklyDate ? ` на ${nb.weeklyDate}` : ''}`,
+        })]));
+      }
+      rows.push(row(r));
+    });
+    body.append(rtable(['Валюта', 'Сом'], rows));
+
+    if (weekly.length) {
+      const more = el('button', {
+        className: 'nbkr-more',
+        textContent: ratesUi.nbkrAll ? 'Скрыть еженедельные курсы' : `Показать ещё ${weekly.length} ${plural(weekly.length, 'валюту', 'валюты', 'валют')} (еженедельные)`,
+      });
+      more.onclick = () => { ratesUi.nbkrAll = !ratesUi.nbkrAll; saveRatesUi(); renderNbkr(); };
+      body.append(more);
+    }
   }
 
   function renderMembers() {
