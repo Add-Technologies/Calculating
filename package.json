@@ -1,0 +1,13 @@
+{
+  "name": "aegis-rates-calculator",
+  "private": true,
+  "description": "Калькулятор курсов Aegis — прибыль на разнице курсов поставщика и клиента",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "push-rates": "node push-rates.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

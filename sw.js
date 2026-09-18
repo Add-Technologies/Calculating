@@ -1,11 +1,14 @@
 // Service worker: приложение открывается без интернета.
 // Сначала сеть (чтобы сразу получать обновления), при отсутствии связи — кэш.
-const CACHE = 'treasury-v3';
+const CACHE = 'treasury-v4';
 const FONTS_CACHE = 'treasury-fonts';
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const ASSETS = [
   './',
   './index.html',
+  './styles.css',
+  './app.js',
+  './lib/calc.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

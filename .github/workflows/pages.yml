@@ -1,4 +1,4 @@
-# Публикация на GitHub Pages вместе со свежими курсами (rates.json).
+# Публикация на GitHub Pages вместе со свежими курсами (rates.json) и архив курсов в ветке rates.
 # Запускается при каждом push, каждые 10 минут и вручную (Actions → Run workflow).
 # В Settings → Pages источник должен быть «GitHub Actions».
 name: Сайт и курсы
@@ -11,13 +11,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
+
+env:
+  SKIP_BROWSER: '1'   # Investing.com с серверов GitHub не открывается — не ждём его
 
 jobs:
   build:
@@ -29,22 +32,48 @@ jobs:
         with:
           node-version: 22
 
+      - name: Тесты
+        run: npm test
+
       - name: Собрать сайт и курсы
         run: |
-          mkdir -p _site
-          cp index.html manifest.webmanifest sw.js _site/
+          mkdir -p _site/lib
+          cp index.html styles.css app.js manifest.webmanifest sw.js _site/
+          cp lib/calc.js _site/lib/
           cp -r icons _site/
           node lib/rates.js _site/rates.json
           node -e '
             const d = require("./_site/rates.json");
             const ok = x => x && !x.error;
             const list = arr => arr.map(c => c.name + (c.error ? " ✗ " + c.error : " ✓ " + (c.official ?? c.bid + "/" + c.ask))).join("; ");
-            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? "✓" : "✗ " + d.nbkr.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | USDT: ${list(d.crypto)} | USD: ${list(d.usdrub)}`);
+            console.log(`::notice title=Курсы::НБКР ${ok(d.nbkr) ? d.nbkr.rates.length : "✗ " + d.nbkr.error} | участники ${Array.isArray(d.members) ? d.members.length : "✗ " + d.members.error} | USDT: ${list(d.crypto)} | USD: ${list(d.usdrub)}`);
           '
 
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+      # Архив курсов: одна сжатая запись за запуск, файл на день — history/ГГГГ/ММ/ДД.jsonl в ветке rates
+      - uses: actions/checkout@v7
+        with:
+          ref: rates
+          path: rates-branch
+
+      - name: Записать историю курсов
+        run: |
+          node lib/history.js _site/rates.json rates-branch
+          cd rates-branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history
+          git diff --cached --quiet && exit 0
+          git commit -m "История курсов $(date -u +%Y-%m-%dT%H:%MZ)"
+          # Ветку параллельно обновляет push-rates.js с компьютера — при гонке подтягиваем и пробуем снова
+          for i in 1 2 3 4; do
+            git push && exit 0
+            git pull --rebase && sleep 3
+          done
+          exit 1
 
   deploy:
     needs: build
