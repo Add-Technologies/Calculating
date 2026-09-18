@@ -162,6 +162,10 @@
   .leg-out b { color: var(--text); font-weight: 600; }
   .leg-out .side { display: flex; flex-direction: column; gap: 2px; }
   .leg-out .side span { font-size: 12.5px; }
+  .leg-out .leg-profit { padding-top: 6px; margin-top: 2px; border-top: 1px dashed var(--border); }
+  .leg-out .leg-profit b { font-size: 15px; }
+  .leg-out .leg-profit b.pos { color: var(--profit); }
+  .leg-out .leg-profit b.neg { color: var(--loss); }
 
   .results { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .stat .k { font-size: 13px; color: var(--muted); }
@@ -369,7 +373,7 @@
   @media (min-width: 1500px) {
     .wrap, .topbar-in { max-width: 2560px; }
     .layout {
-      grid-template-columns: minmax(320px, 1fr) minmax(620px, 1.9fr) minmax(320px, 1fr);
+      grid-template-columns: minmax(300px, 1fr) minmax(620px, 3fr) minmax(300px, 1fr);
       grid-template-rows: auto auto auto auto 1fr;
       column-gap: 20px; align-items: start;
     }
@@ -801,15 +805,29 @@
     const base = isFinite(volume) && volume > 0 && !hasAdjacentDuplicates();
     // Поставщик и клиент считаются независимо: один может быть уже посчитан, пока у другого нет курса
     let sup = base ? volume : null, cli = base ? volume : null;
+    const conv = (x, leg, rate) => leg.inverse ? x / rate : x * rate;
     S.legs.forEach((leg, i) => {
       const rs = parseNum(leg.rs), rc = parseNum(leg.rc);
       const d = decOf(S.currencies[i + 1]);
-      sup = sup != null && rs > 0 ? roundTo(leg.inverse ? sup / rs : sup * rs, d) : null;
-      cli = cli != null && rc > 0 ? roundTo(leg.inverse ? cli / rc : cli * rc, d) : null;
-      steps.push({ sup, cli, rs, rc });
+      // Прибыль этапа: сумму клиента на входе этапа меняем по курсу поставщика и по курсу клиента,
+      // разница — заработок именно на этом этапе (в валюте этапа)
+      const legProfit = cli != null && rs > 0 && rc > 0
+        ? roundTo(conv(cli, leg, rs) - conv(cli, leg, rc), d) : null;
+      sup = sup != null && rs > 0 ? roundTo(conv(sup, leg, rs), d) : null;
+      cli = cli != null && rc > 0 ? roundTo(conv(cli, leg, rc), d) : null;
+      steps.push({ sup, cli, rs, rc, profit: legProfit });
+    });
+    // Прибыль этапа в итоговой валюте — через курсы поставщика следующих этапов.
+    // Сумма по этапам равна итоговой прибыли (разница курсов раскладывается по этапам без остатка).
+    const end = S.currencies[S.currencies.length - 1];
+    steps.forEach((st, i) => {
+      let v = st.profit;
+      for (let j = i + 1; j < S.legs.length && v != null; j++) {
+        v = steps[j].rs > 0 ? conv(v, S.legs[j], steps[j].rs) : null;
+      }
+      st.profitFinal = v != null ? roundTo(v, decOf(end)) : null;
     });
     const ok = sup != null && cli != null;
-    const end = S.currencies[S.currencies.length - 1];
     return {
       ok, steps, volume, supplier: sup, client: cli,
       profit: ok ? roundTo(sup - cli, decOf(end)) : null,
@@ -846,6 +864,7 @@
           <div class="leg-out">
             <div class="side"><span class="ws"></span><b class="os">—</b></div>
             <div class="side"><span class="wc"></span><b class="oc">—</b></div>
+            <div class="side leg-profit"><span>Прибыль этапа</span><b class="op">—</b></div>
           </div>
         </div>
         <div class="rule"></div>`;
@@ -1023,6 +1042,17 @@
       el.querySelector('.wc').textContent = `Клиент продаёт ${plOf(from)} за ${plOf(to)}`;
       el.querySelector('.os').textContent = st?.sup != null ? `${fmtAmt(st.sup, to)} за ${fmtAmt(prevSup, from)}` : '—';
       el.querySelector('.oc').textContent = st?.cli != null ? `${fmtAmt(prevCli, from)} за ${fmtAmt(st.cli, to)}` : '—';
+      const op = el.querySelector('.op');
+      const end = cur[cur.length - 1];
+      const signed = (v, code) => (v > 0 ? '+' : '') + fmtAmt(v, code);
+      if (st?.profit != null) {
+        const inFinal = i < S.legs.length - 1 && st.profitFinal != null ? ` ≈ ${signed(st.profitFinal, end)}` : '';
+        op.textContent = signed(st.profit, to) + inFinal;
+        op.className = 'op ' + (st.profit > 0 ? 'pos' : st.profit < 0 ? 'neg' : '');
+      } else {
+        op.textContent = '—';
+        op.className = 'op';
+      }
     });
 
     // Итоги
