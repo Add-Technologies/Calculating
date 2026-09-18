@@ -1,0 +1,198 @@
+# Сборка Docker-образа и деплой на VPS (тот же сервер и те же секреты, что у
+# compliance-kyc: DOCKER_USERNAME, DOCKER_PASSWORD, PROD_SSH_HOST,
+# PROD_SSH_USER, PROD_SSH_PASSWORD). Образ уезжает в приватный репозиторий
+# Docker Hub <DOCKER_USERNAME>/addtech-calculator, на сервере в
+# /opt/docker/calculator/ лежит docker-compose.vps.yml с подставленным SHA.
+#
+# На push в main — сборка и деплой; вручную (Run workflow) — только сборка,
+# чтобы можно было проверить образ, не трогая сервер.
+name: Docker-образ и деплой на VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['main']
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Required by cache-from/cache-to: type=gha below — the default 'docker'
+      # driver cannot export build cache. This sets up the docker-container driver.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and push app (docker image)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          # Два тега: <sha> — его закрепляет деплой (и на него же откат),
+          # latest — то, что подставляет docker-compose.vps.yml при ручном
+          # запуске на сервере без CI.
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/addtech-calculator:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/addtech-calculator:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy calculator on VPS
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v5
+      # Первичная настройка сервера — только то, чего ещё нет. Повторные
+      # деплои проходят этот шаг без изменений. Caddy (домен и
+      # reverse_proxy 127.0.0.1:8091) настраивается вручную и здесь не трогается.
+      - name: Prepare server (first deploy only)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASSWORD }}
+          script: |
+            set -e
+            DIR=/opt/docker/calculator
+            APP_PORT=8091
+
+            # Каталог для compose и .env. /opt обычно принадлежит root, поэтому
+            # при неудаче — через sudo -n (без запроса пароля: SSH здесь
+            # неинтерактивный) и отдать каталог пользователю деплоя.
+            if [ ! -d "$DIR" ]; then
+              echo "First deploy: creating $DIR"
+              mkdir -p "$DIR" 2>/dev/null || {
+                sudo -n mkdir -p "$DIR" && sudo -n chown "$(id -u):$(id -g)" "$DIR"
+              }
+            fi
+            [ -w "$DIR" ] || { echo "ERROR: $DIR is not writable by $(id -un)"; exit 1; }
+
+            # .env читает docker-compose.vps.yml (DOCKERHUB_USER, APP_PORT).
+            # Создаётся один раз: дальше файл принадлежит серверу, и ручные
+            # правки (например, другой порт) деплой не затирает.
+            if [ ! -f "$DIR/.env" ]; then
+              # Порт проверяется только при первичной настройке: потом его
+              # законно держит наш же контейнер.
+              if ss -ltnH "sport = :$APP_PORT" | grep -q .; then
+                echo "ERROR: port $APP_PORT is already in use on the server:"
+                ss -ltnp "sport = :$APP_PORT"
+                echo "Pick a free port, then create $DIR/.env manually with APP_PORT=<port>."
+                exit 1
+              fi
+              printf 'DOCKERHUB_USER=%s\nAPP_PORT=%s\n' "${{ secrets.DOCKER_USERNAME }}" "$APP_PORT" > "$DIR/.env"
+              chmod 600 "$DIR/.env"
+              echo "Created $DIR/.env (APP_PORT=$APP_PORT)"
+            else
+              echo "$DIR/.env exists — left untouched:"
+              sed 's/=.*/=…/' "$DIR/.env"
+            fi
+      # docker-compose.vps.yml из репозитория зеркалируется на сервер при
+      # каждом деплое; следующий шаг делает из него docker-compose.yml с
+      # закреплённым SHA образа.
+      - name: Copy docker-compose to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASSWORD }}
+          source: docker-compose.vps.yml
+          target: /opt/docker/calculator/
+          strip_components: 0
+      - name: Deploy app via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASSWORD }}
+          script: |
+            set -e
+
+            # Preflight: without this, a server missing Docker dies later with a
+            # bare "docker: command not found" (exit 127). Non-interactive SSH
+            # also skips the login-shell PATH setup, so snap-installed docker
+            # (/snap/bin) may be invisible here even when it works interactively.
+            command -v docker >/dev/null 2>&1 || {
+              echo "ERROR: docker not found on the server for non-interactive SSH."
+              echo "Install Docker Engine + the compose plugin, or fix PATH (e.g. /snap/bin)."
+              exit 1
+            }
+
+            cd /opt/docker/calculator
+
+            # Record the currently-running image so a rollback has something to aim at.
+            PREV_IMAGE=$(docker compose ps -q app 2>/dev/null \
+              | xargs -r docker inspect --format='{{.Config.Image}}' 2>/dev/null | head -1 || true)
+            echo "Previous image: ${PREV_IMAGE:-<none>}"
+
+            # Copy the server-specific docker-compose file
+            cat docker-compose.vps.yml > docker-compose.yml
+
+            # Pin the image to the Docker Hub user from secrets and the commit
+            # SHA (the compose file in git carries a ${DOCKERHUB_USER} placeholder
+            # and the floating :latest tag).
+            sed -i "s|image: .*/addtech-calculator:.*|image: ${{ secrets.DOCKER_USERNAME }}/addtech-calculator:${{ github.sha }}|g" docker-compose.yml
+
+            # The Docker Hub repo is private — the server must authenticate
+            # before it can pull. --password-stdin keeps the token out of the
+            # process list; credentials persist in ~/.docker/config.json so
+            # manual `docker compose pull` on the server keeps working too.
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            # Pull new image and start
+            docker compose pull
+            docker compose up -d
+
+            # ---------------------------------------------------------------
+            # Post-deploy gate: an unhealthy release rolls back to $PREV_IMAGE.
+            #
+            # The healthcheck (docker-compose.vps.yml) needs up to ~100s to
+            # reach a verdict: 10s start_period + 30s interval x 3 retries.
+            # The poll is bounded (30 x 5s = 2.5 min) and anything but
+            # "healthy" at the end fails.
+            #
+            # docker inspect, not `compose ps --format '{{.Health}}'`: the
+            # template form requires a newer compose than some servers carry.
+            # ---------------------------------------------------------------
+            HEALTH=none
+            for i in $(seq 1 30); do
+              CID=$(docker compose ps -q app 2>/dev/null || true)
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$CID" 2>/dev/null || echo none)
+              case "$HEALTH" in healthy|unhealthy) break;; esac
+              sleep 5
+            done
+
+            if [ "$HEALTH" != "healthy" ]; then
+              echo "===== New release is '$HEALTH' — rolling back ====="
+              docker compose logs --tail=100 app || true
+              if [ -n "$PREV_IMAGE" ]; then
+                sed -i "s|image: .*/addtech-calculator:.*|image: $PREV_IMAGE|g" docker-compose.yml
+                docker compose up -d app
+                echo "Rolled back to $PREV_IMAGE."
+              else
+                echo "First deploy — nothing to roll back to; broken release left up for debugging."
+              fi
+              # Red run either way: the new release did not ship.
+              exit 1
+            fi
+
+            echo "===== Container status ====="
+            docker compose ps
+
+            echo "===== App logs ====="
+            docker compose logs --tail=50 app
+
+            echo "calculator successfully deployed (commit: ${{ github.sha }})."
+
+            # Clean up dangling images
+            docker image prune -f
+            echo "===== Dangling images cleaned ====="

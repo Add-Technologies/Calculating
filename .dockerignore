@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+.netlify
+_site
+rates.json
+README.md
+Dockerfile
+.dockerignore
+docker-compose*.yml
+**/.DS_Store

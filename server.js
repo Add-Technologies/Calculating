@@ -32,7 +32,11 @@ function getRates() {
 }
 
 http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(req.url.split('?')[0]);
+  // decodeURIComponent бросает URIError на битом %-экранировании («/%»), а
+  // исключение в обработчике запроса — это падение всего процесса.
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); }
+  catch { res.writeHead(400); return res.end('Bad request'); }
   if (urlPath === '/api/rates') {
     return getRates()
       .then(data => {
@@ -45,7 +49,8 @@ http.createServer((req, res) => {
       });
   }
   const file = path.join(ROOT, urlPath === '/' ? 'index.html' : urlPath);
-  if (!file.startsWith(ROOT + path.sep) || path.basename(file) === 'server.js') {
+  // Наружу только статика: серверный код (server.js, lib/) по HTTP не отдаём.
+  if (!file.startsWith(ROOT + path.sep) || path.basename(file) === 'server.js' || file.startsWith(path.join(ROOT, 'lib') + path.sep)) {
     res.writeHead(403);
     return res.end();
   }

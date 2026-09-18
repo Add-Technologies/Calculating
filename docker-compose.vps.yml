@@ -1,0 +1,42 @@
+# Этот файл едет на VPS (тот же сервер, что и compliance-kyc). Он только тянет
+# готовый образ из Docker Hub — сборки здесь нет, её делает GitHub Actions.
+# Джоб деплоя копирует файл в /opt/docker/calculator/ и подставляет в image
+# конкретный SHA коммита.
+#
+# Переопределения (APP_PORT, DOCKERHUB_USER) лежат в
+# /opt/docker/calculator/.env на сервере — не в git.
+
+services:
+  app:
+    # Пользователь Docker Hub не захардкожен: CI подставляет image целиком,
+    # при ручном запуске задайте DOCKERHUB_USER в .env. Репозиторий образа
+    # приватный — перед pull нужен docker login.
+    image: ${DOCKERHUB_USER:?set DOCKERHUB_USER in .env}/addtech-calculator:latest
+    restart: unless-stopped
+    # Только loopback хоста: наружу приложение смотрит через Caddy на самом VPS
+    # (он терминирует TLS и раздаёт домены — этот и compliance-kyc). Публикация
+    # на 0.0.0.0 открыла бы голый HTTP рядом с Caddy, причём мимо ufw: Docker
+    # пишет свои правила iptables поверх.
+    #
+    # Хост-порт 8091: 8090 на этом VPS уже занят compliance-kyc, а также заняты
+    # 4041, 5001, 5050, 5435, 7000/7443, 7005, 7017-7019, 9001.
+    # Перед первым деплоем проверьте: ss -ltnp | grep 8091
+    # В Caddyfile: reverse_proxy 127.0.0.1:8091
+    ports:
+      - "127.0.0.1:${APP_PORT:-8091}:8080"
+    # Логи без лимита со временем забивают диск — приложение пишет мало, но
+    # ротация на всякий случай.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # 127.0.0.1, а НЕ localhost: в контейнере localhost резолвится и в ::1,
+      # busybox wget пойдёт туда первым, а сервер слушает только IPv4 —
+      # healthcheck падал бы при полностью рабочем приложении.
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

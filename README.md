@@ -102,3 +102,5 @@ $env:HOST="0.0.0.0"; node server.js
 | `styles.css`, `app.js` | стили и логика страницы |
 | `tests/` | автотесты: `npm test` |
 | `.github/workflows/pages.yml` | публикация на Pages и обновление курсов |
+| `.github/workflows/deploy.yml` | сборка Docker-образа и деплой на VPS |
+| `Dockerfile`, `docker-compose.vps.yml` | образ и запуск на VPS за Caddy |

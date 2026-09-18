@@ -1,0 +1,9 @@
+# Локальная сборка и запуск: docker compose up --build → http://localhost:8080
+# На сервере используется docker-compose.vps.yml — он не собирает, а тянет
+# готовый образ из Docker Hub.
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
